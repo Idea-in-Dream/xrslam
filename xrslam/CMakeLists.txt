@@ -5,6 +5,7 @@ project(xrslam-library VERSION 0.5.0 LANGUAGES CXX)
 configure_file(cmake/version.h.in include/xrslam/version.h)
 
 find_package(OpenCV REQUIRED)
+set(spdlog_DIR /home/cuimingdi/SLAM/xrslam/3rd/spdlog/build)
 find_package(spdlog REQUIRED)
 find_package(Ceres REQUIRED)
 
@@ -140,6 +141,7 @@ PUBLIC
   # XRPrimer::xrprimer
   ${OpenCV_LIBS}
   ${CERES_LIBRARIES}
+  spdlog::spdlog
 )
 
 set(XRSLAM_LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR} CACHE INTERNAL "")

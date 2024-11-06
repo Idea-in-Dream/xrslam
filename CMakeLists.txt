@@ -19,12 +19,6 @@ option(XRSLAM_PC_HEADLESS_ONLY "..." OFF)
 option(XRSLAM_IOS "..." OFF)
 option(XRSLAM_TEST "..." OFF)
 
-if(IOS)
-  set(XRSLAM_IOS ON)
-  set(XRSLAM_ENABLE_THREADING ON)
-  #set(XRSLAM_ENABLE_DEBUG_INSPECTION OFF CACHE BOOL "..." FORCE)
-endif()
-
 
 if(NOT IOS)
   set(XRSLAM_PC ON)
@@ -37,10 +31,4 @@ add_subdirectory(xrslam-localization)
 
 if(XRSLAM_PC)
   add_subdirectory(xrslam-pc)
-endif()
-if(XRSLAM_IOS)
-  add_subdirectory(xrslam-ios)
-endif()
-if(XRSLAM_TEST)
-  add_subdirectory(xrslam-test)
 endif()

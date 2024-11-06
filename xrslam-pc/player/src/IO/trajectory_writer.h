@@ -67,7 +67,7 @@ class TumTrajectoryWriter : public TrajectoryWriter {
     }
 
     void write_pose(const double &t, const XRSLAMPose &pose) override {
-        fprintf(file, "%.18e %.9e %.9e %.9e %.7e %.7e %.7e %.7e\n", t*1e6,
+        fprintf(file, "%.18e %.9e %.9e %.9e %.7e %.7e %.7e %.7e\n", t,
                 pose.translation[0], pose.translation[1], pose.translation[2],
                 pose.quaternion[0], pose.quaternion[1], pose.quaternion[2],
                 pose.quaternion[3]);
