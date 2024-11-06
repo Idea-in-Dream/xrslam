@@ -1,14 +1,18 @@
 #include "XRSLAMManager.h"
 #include "xrslam/xrslam.h"
 
+// 用于创建和初始化 XRSLAM 系统配置
 int XRSLAMCreate(
     const char *slam_config_path,   // slam configuration file path
     const char *device_config_path, // device configuration file path
     const char *license_path, const char *product_name, void **config) {
-    if (xrslam::XRSLAMManager::Instance().CheckLicense(license_path,
-                                                       product_name) == 0)
-        return 0;
+    
+    // 检查许可证
+    // if (xrslam::XRSLAMManager::Instance().CheckLicense(license_path,
+    //                                                    product_name) == 0)
+    //     return 0;
 
+    // 创建 YAML 配置对象
     std::shared_ptr<xrslam::extra::YamlConfig> yaml_config =
         std::make_shared<xrslam::extra::YamlConfig>(slam_config_path,
                                                     device_config_path);

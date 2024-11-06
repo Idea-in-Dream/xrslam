@@ -59,7 +59,7 @@ typedef struct XRSLAMDepthImage {
 } XRSLAMDepthImage;
 
 /**
- * @brief input acceleration data
+ * @brief input acceleration data //用于保存加速度数据的结构体，其中data为加速度数据，timestamp为时间戳
  */
 typedef struct XRSLAMAcceleration {
     double data[3];   /*!< acceleration raw data. */
@@ -67,7 +67,7 @@ typedef struct XRSLAMAcceleration {
 } XRSLAMAcceleration;
 
 /**
- * @brief input gyroscope data
+ * @brief input gyroscope data //用于保存陀螺仪数据的结构体，其中data为陀螺仪数据，timestamp为时间戳
  */
 typedef struct XRSLAMGyroscope {
     double data[3];   /*!< gyroscope raw data. */

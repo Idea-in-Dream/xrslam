@@ -7,6 +7,7 @@ include(GNUInstallDirs)
 superbuild_depend(glfw)
 superbuild_depend(glbinding)
 superbuild_depend(nuklear)
+find_package(OpenCV REQUIRED)
 
 add_library(lightvis
   ${CMAKE_CURRENT_SOURCE_DIR}/include/image.h
@@ -22,6 +23,7 @@ target_include_directories(lightvis
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${OpenCV_INCLUDE_DIRS}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -29,7 +31,8 @@ target_include_directories(lightvis
 target_link_libraries(lightvis
   PUBLIC
     depends::glbinding
-    XRPrimer::xrprimer
+    ${OpenCV_LIBS}
+    # XRPrimer::xrprimer
   PRIVATE
     depends::glfw
     depends::nuklear

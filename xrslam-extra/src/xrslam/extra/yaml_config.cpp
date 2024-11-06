@@ -79,6 +79,7 @@ static void assign_matrix(M &mat, const YAML::Node &node) {
     }
 }
 
+// 加载和解析这些配置文件
 YamlConfig::YamlConfig(const std::string &slam_config_filename,
                        const std::string &device_config_filename) {
     m_output_to_body_rotation = Config::output_to_body_rotation();

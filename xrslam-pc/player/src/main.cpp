@@ -59,25 +59,40 @@ void GetShowElements(VizElements &curframe) {
 }
 #endif
 
+// 类型定义 建一个元组类型 IMUData，用于保存 IMU（惯性测量单元）数据。元组包含三个元素：时间戳（double）、加速度计数据（XRSLAMAcceleration）和陀螺仪数据（XRSLAMGyroscope）。
+
 typedef std::tuple<double, XRSLAMAcceleration, XRSLAMGyroscope> IMUData;
 
 int main(int argc, char *argv[]) {
+    
+    // 从命令行参数中获取输入文件路径、SLAM配置文件路径、设备配置文件路径和许可证文件路径。
     argparse::ArgumentParser program("XRSLAM Player");
+    // SLAM 配置文件
     program.add_argument("-sc", "--slamconfig")
         .help("SLAM configuration YAML file.")
         .nargs(1);
+    // 设备配置文件
     program.add_argument("-dc", "--deviceconfig")
         .help("Device configuration YAML file.")
         .nargs(1);
+    // 许可证文件
     program.add_argument("-lc", "--license").help("License file.").nargs(1);
+    // 保存轨迹为 CSV 格式
     program.add_argument("--csv").help("Save CSV-format trajectory.").nargs(1);
+    // 保存轨迹为 TUM 格式
     program.add_argument("--tum").help("Save TUM-format trajectory.").nargs(1);
+    // 立即播放
     program.add_argument("-p", "--play")
         .help("Start playing immediately.")
         .default_value(false)
         .implicit_value(true);
+    // 输入文件
     program.add_argument("input").help("input file");
+
+    // 解析命令行参数
     program.parse_args(argc, argv);
+    
+    // 从命令行参数解析器 program 中提取各个参数的值，并存储在相应的变量中。
     std::string data_path = program.get<std::string>("input");
     std::string slam_config_path = program.get<std::string>("-sc");
     std::string device_config_path = program.get<std::string>("-dc");
@@ -86,7 +101,7 @@ int main(int argc, char *argv[]) {
     std::string tum_output = program.get<std::string>("--tum");
     bool is_play = program.get<bool>("-p");
 
-    // create slam with configuration files
+    // create slam with configuration files 从配置文件中创建 SLAM 对象
     void *yaml_config = nullptr;
     int create_succ =
         XRSLAMCreate(slam_config_path.c_str(), device_config_path.c_str(),
