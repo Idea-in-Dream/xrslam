@@ -3,14 +3,19 @@
 #define XRSLAM_VERSION "0.1.0"
 
 namespace xrslam {
+// Instance() 方法返回 XRSLAMManager 类的唯一实例 (单例模式)
 XRSLAMManager &XRSLAMManager::Instance() {
+    // 声明了一个静态局部变量 这意味着它只会在第一次调用时创建，并且在程序生命周期中一直存在。由于是静态的，它会在程序结束时自动销毁
     static XRSLAMManager SLAMManagerInstance;
+    // 返回该静态变量的引用，确保返回的总是同一个实例，达到单例的效果。
     return SLAMManagerInstance;
 }
 
+// 构造函数和析构函数
 XRSLAMManager::XRSLAMManager() {}
 XRSLAMManager::~XRSLAMManager() {}
 
+// xrslam logo显示
 static const unsigned char logo_ascii[] = {
     0x0A, 0xE2, 0x96, 0x88, 0xE2, 0x96, 0x88, 0xE2, 0x95, 0x97, 0x20, 0x20,
     0xE2, 0x96, 0x88, 0xE2, 0x96, 0x88, 0xE2, 0x95, 0x97, 0xE2, 0x96, 0x88,
@@ -82,11 +87,17 @@ static const unsigned char logo_ascii[] = {
     0x90, 0xE2, 0x95, 0x9D, 0x20, 0x20, 0x20, 0x20, 0x20, 0xE2, 0x95, 0x9A,
     0xE2, 0x95, 0x90, 0xE2, 0x95, 0x9D};
 
+// 初始化XRSLAMManager类
 void XRSLAMManager::Init(std::shared_ptr<Config> config) {
+    // 初始化一个 XRSLAM::Detail 类的实例，并使用 std::make_unique 创建一个智能指针 detail_。这个 Detail 类用于保存系统的详细信息，并进行后续处理。
     detail_ = std::make_unique<XRSLAM::Detail>(config);
+    // 将传入的配置对象 config 保存到 config_ 成员变量中，config_ 用来存储当前的配置
     config_ = config;
+    // 打印 XRSLAM 的 ASCII logo 和版本信息
     log_message(XRSLAM_LOG_INFO, (char *)logo_ascii, XRSLAM_VERSION_STRING);
+    // 打印配置信息
     config_->log_config();
+    // 打印初始化成功的消息和版本号
     std::cout << "-----------------Create XRSLAM v" << XRSLAM_VERSION
               << " successfully-----------" << std::endl;
 }

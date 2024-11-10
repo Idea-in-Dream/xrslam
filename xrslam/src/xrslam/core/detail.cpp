@@ -26,10 +26,13 @@ static void propagate_state(double &state_time, PoseState &state_pose,
         (state_pose.q * expmap((w - state_motion.bg) * dt)).normalized();
     state_time = t;
 }
-
+// Detail 构造函数通过传入的 config 对象初始化了 Detail 类的成员变量
 XRSLAM::Detail::Detail(std::shared_ptr<Config> config) : config(config) {
+    // 调用 Solver 类的 init 静态方法，传入配置对象 config 的原始指针
     Solver::init(config.get());
+    // 创建一个 FrontendWorker 对象，用于处理 SLAM 系统的前端任务
     frontend = std::make_unique<FrontendWorker>(this, config);
+    // 创建一个 FeatureTracker 对象，用于处理特征点跟踪任务
     feature_tracker = std::make_unique<FeatureTracker>(this, config);
 
     frontend->start();

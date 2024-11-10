@@ -7,6 +7,7 @@
 
 namespace xrslam {
 
+// 系统状态
 class Config;
 class FeatureTracker;
 class Frame;
@@ -15,18 +16,23 @@ class Image;
 class Map;
 class Synchronizer;
 
+// 这个结构体定义了 XRSLAM 系统的详细信息，并包含了一些传感器数据的结构体
 struct XRSLAM::Detail {
+    // 陀螺仪数据
     struct GyroscopeData {
         double t;
         vector<3> w;
     };
+    // 加速度计数据
     struct AccelerometerData {
         double t;
         vector<3> a;
     };
 
   public:
+    // 构造函数，接受一个 Config 对象的指针
     Detail(std::shared_ptr<Config> config);
+    // 析构函数
     virtual ~Detail();
 
     const Config *configurations() const;
@@ -68,7 +74,7 @@ struct XRSLAM::Detail {
     std::deque<std::unique_ptr<Frame>> frames;
     std::deque<ImuData> frontal_imus;
 
-    std::shared_ptr<Config> config;
+    std::shared_ptr<Config> config; // 系统配置
 };
 
 } // namespace xrslam

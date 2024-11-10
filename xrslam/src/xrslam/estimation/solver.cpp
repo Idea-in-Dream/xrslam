@@ -10,19 +10,33 @@
 
 namespace xrslam {
 
+// SolverDetails 是 Solver 类中的一个嵌套结构体。它包含了多个与优化求解器相关的成员变量，用于管理优化过程中的各个组件
 struct Solver::SolverDetails {
+    // 这是一个静态方法，用于返回一个指向 Config 类型的指针引用。它内部声明了一个静态指针 s_config，并返回这个指针的引用。
+    // 通过这种方式，可以在整个程序中共享这个配置指针（即所有 Solver 实例可以访问到同一个 Config 配置）
     static Config *&config() {
+        // 该指针在第一次调用 config() 时被初始化为 nullptr，后续的调用将返回这个指针的引用。
         static Config *s_config = nullptr;
         return s_config;
     }
+    // 智能指针，用于管理 ceres::Problem 对象的生命周期。
+    // ceres::Problem 是 Ceres Solver 库中的一个核心类，用于表示一个优化问题。在这个问题中，你可以添加参数块、误差项（损失函数）以及各种约束条件。
     std::unique_ptr<ceres::Problem> problem;
+    // CauchyLoss 用于优化中的鲁棒损失函数，通常用于减少异常值（如离群点）对优化结果的影响
     std::unique_ptr<ceres::LossFunction> cauchy_loss;
+    // LocalParameterization 用于约束优化中的参数，例如四元数的约束（保持四元数的单位化特性）
     std::unique_ptr<ceres::LocalParameterization> quaternion_parameterization;
+    // ReprojectionErrorFactor：重投影误差因子，常见于视觉SLAM中。
     std::vector<std::unique_ptr<ReprojectionErrorFactor>> managed_rpefactors;
+    // ReprojectionPriorFactor：重投影先验因子，用于引入先验信息。
     std::vector<std::unique_ptr<ReprojectionPriorFactor>> managed_rppfactors;
+    // RotationPriorFactor：旋转先验因子，用于约束旋转参数。
     std::vector<std::unique_ptr<RotationPriorFactor>> managed_ropfactors;
+    // PreIntegrationErrorFactor：预积分误差因子，用于优化相机运动和特征点位置。
     std::vector<std::unique_ptr<PreIntegrationErrorFactor>> managed_piefactors;
+    // PreIntegrationPriorFactor：预积分先验因子，用于引入预积分的先验信息。
     std::vector<std::unique_ptr<PreIntegrationPriorFactor>> managed_pipfactors;
+    // MarginalizationFactor：边缘化因子，用于边缘化旧的优化变量，以减少优化问题的规模。
     std::vector<std::unique_ptr<MarginalizationFactor>> managed_marfactors;
 };
 
@@ -40,7 +54,7 @@ Solver::Solver() : details(std::make_unique<SolverDetails>()) {
 }
 
 Solver::~Solver() = default;
-
+// 这是 Solver 类的一个成员函数，负责初始化配置（Config）给 SolverDetails
 void Solver::init(Config *config) { SolverDetails::config() = config; }
 
 std::unique_ptr<Solver> Solver::create() {
