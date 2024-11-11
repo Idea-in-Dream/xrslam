@@ -46,12 +46,16 @@ XRSLAM::Detail::~Detail() {
 
 const Config *XRSLAM::Detail::configurations() const { return config.get(); }
 
+// 用于处理陀螺仪数据，并利用加速度数据对姿态进行估计。
 Pose XRSLAM::Detail::track_gyroscope(const double &t, const double &x,
                                      const double &y, const double &z) {
+    // 检查是否已有加速度数据
     if (accelerometers.size() > 0) {
+        // 如果当前时间小于加速度数据的时间，则清空陀螺仪数据
         if (t < accelerometers.front().t) {
             gyroscopes.clear();
         } else {
+            // 循环处理加速度数据，直到当前时间小于加速度数据的时间
             while (accelerometers.size() > 0 && t >= accelerometers.front().t) {
                 const auto &acc = accelerometers.front();
                 double lambda =
