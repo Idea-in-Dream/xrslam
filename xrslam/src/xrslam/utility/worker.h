@@ -16,6 +16,7 @@ class Worker {
     void start() {
         worker_running = true;
 #if defined(XRSLAM_ENABLE_THREADING)
+        // 启动一个新线程，执行 worker_loop() 方法
         worker_thread = std::thread(&Worker::worker_loop, this);
 #endif
     }
@@ -37,6 +38,7 @@ class Worker {
     void resume(std::unique_lock<std::mutex> &l) {
         l.unlock();
 #if defined(XRSLAM_ENABLE_THREADING)
+        //唤醒所有等待此条件变量的线程
         worker_cv.notify_all();
 #else
     // 如果不支持多线程，直接调用 worker_loop() 在当前线程上执行任务
@@ -57,7 +59,9 @@ class Worker {
     void worker_loop();
 
 #if defined(XRSLAM_ENABLE_THREADING)
+    // 定义了一个线程对象和一个条件变量
     std::thread worker_thread;
+    // 条件变量允许一个线程等待特定条件满足时被另一个线程通知，进而恢复执行
     std::condition_variable worker_cv;
 #endif
     // 

@@ -12,16 +12,21 @@
 #include <xrslam/utility/unique_timer.h>
 namespace xrslam {
 
+// FeatureTracker 特征跟踪 构造函数 实现 
 FeatureTracker::FeatureTracker(XRSLAM::Detail *detail,
                                std::shared_ptr<Config> config)
-    : detail(detail), config(config) {
+    : detail(detail), config(config) { // 目的: 避免先默认初始化 detail 成员变量，再在构造函数体内赋值，提升效率
+    // 初始化 map 和 keymap (全局地图和关键帧地图)
     map = std::make_unique<Map>();
     keymap = std::make_unique<Map>();
 }
 
+// FeatureTracker 特征跟踪 析构函数 实现
 FeatureTracker::~FeatureTracker() = default;
 
+//
 void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
+    // make_timer 定义了一个定时器 ft_timer，用于测量特征跟踪的时间开销，并计算平均耗时
     auto ft_timer = make_timer([](double t) {
         inspect(feature_tracker_time, time) {
             static double avg_time = 0;
@@ -32,8 +37,11 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
         }
     });
 
+    // 移动语义将队首的帧赋值给局部变量 frame，避免深拷贝，提升效率。
     std::unique_ptr<Frame> frame = std::move(frames.front());
+    // 移除队首的帧
     frames.pop_front();
+    // frames 解锁 (解锁后，其他线程可以继续向 frames 中添加帧)
     l.unlock();
 
     frame->image->preprocess(config->feature_tracker_clahe_clip_limit(),
@@ -161,10 +169,13 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
     if (slidind_window_frame_tag)
         detail->frontend->issue_frame(map->get_frame(map->frame_num() - 1));
 }
-
+// 将一帧数据加入到特征跟踪器的工作队列
 void FeatureTracker::track_frame(std::unique_ptr<Frame> frame) {
+    // 获取互斥锁
     auto l = lock();
+    // 将传入的 frame 移动到 frames 队列末尾
     frames.emplace_back(std::move(frame));
+    // 唤醒特征跟踪器的工作线程
     resume(l);
 }
 

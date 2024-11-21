@@ -9,7 +9,9 @@ void Worker::worker_loop() {
         // 调用 lock() 获取一个 unique_lock 对象 l
         auto l = lock();
 #if defined(XRSLAM_ENABLE_THREADING)
+        // 如果 worker_running 为 true 且任务队列为空，则等待 worker_cv 被通知
         if (worker_running && empty()) {
+            // 等待 worker_cv 被通知，直到 worker_running 为 false 或任务队列不为空
             worker_cv.wait(l, [this] { return !worker_running || !empty(); });
         }
 #else
