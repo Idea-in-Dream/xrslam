@@ -8,6 +8,8 @@ superbuild_depend(glfw)
 superbuild_depend(glbinding)
 superbuild_depend(nuklear)
 find_package(OpenCV REQUIRED)
+FIND_PACKAGE(realsense2 REQUIRED)
+
 
 add_library(lightvis
   ${CMAKE_CURRENT_SOURCE_DIR}/include/image.h
@@ -24,6 +26,7 @@ target_include_directories(lightvis
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${OpenCV_INCLUDE_DIRS}
+    ${realsense2_INCLUDE_DIRS}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -32,6 +35,7 @@ target_link_libraries(lightvis
   PUBLIC
     depends::glbinding
     ${OpenCV_LIBS}
+    ${realsense2_LIBRARY}
     # XRPrimer::xrprimer
   PRIVATE
     depends::glfw

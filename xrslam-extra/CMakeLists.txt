@@ -5,7 +5,7 @@ project(xrslam-extra)
 add_compile_options(-fPIC)
 
 include(SuperBuildDepends)
-superbuild_depend(yaml-cpp)
+# superbuild_depend(yaml-cpp)
 
 set(XRSLAM_EXTRA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(XRSLAM_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -31,16 +31,15 @@ target_link_libraries(xrslam-extra-opencv-image
     xrslam-extra-common
 )
 
-if(TARGET depends::yaml-cpp)
-  add_library(xrslam-extra-yaml-config
+add_subdirectory(../3rd/yaml-cpp ${CMAKE_BINARY_DIR}/yaml_build)
+add_library(xrslam-extra-yaml-config
     ${XRSLAM_EXTRA_INCLUDE_DIR}/xrslam/extra/yaml_config.h
     ${XRSLAM_EXTRA_SOURCE_DIR}/xrslam/extra/yaml_config.cpp
   )
   target_link_libraries(xrslam-extra-yaml-config
     PUBLIC
       xrslam-extra-common
-      depends::yaml-cpp
+      yaml-cpp
   )
-endif()
 
 set(XRSLAM_EXTRA_LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR} CACHE INTERNAL "")

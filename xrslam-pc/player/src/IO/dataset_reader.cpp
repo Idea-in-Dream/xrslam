@@ -2,6 +2,7 @@
 #include <euroc_dataset_reader.h>
 #include <tum_dataset_reader.h>
 #include <async_dataset_reader.h>
+#include <phones_dataset_reader.h>
 #include <optional>
 
 std::optional<std::string> path_from_scheme(const std::string &string,
@@ -23,6 +24,8 @@ DatasetReader::create_reader(const std::string &filename, void *yaml_config,
             std::make_unique<EurocDatasetReader>(path.value(), yaml_config);
     } else if (auto path = path_from_scheme(filename, "tum://")) {
         reader = std::make_unique<TUMDatasetReader>(path.value(), yaml_config);
+    } else if (auto path = path_from_scheme(filename, "phone://")) {
+        reader = std::make_unique<PhonesDatasetReader>(path.value(), yaml_config);
     } else {
         return nullptr;
     }

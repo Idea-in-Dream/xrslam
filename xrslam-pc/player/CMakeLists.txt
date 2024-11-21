@@ -13,6 +13,8 @@ add_executable(xrslam-pc-player
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/dataset_reader.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/euroc_dataset_reader.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/euroc_dataset_reader.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/phones_dataset_reader.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/phones_dataset_reader.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/async_dataset_reader.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/async_dataset_reader.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/IO/tum_dataset_reader.h

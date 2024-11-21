@@ -1,21 +1,20 @@
-#include <euroc_dataset_reader.h>
+#include <phones_dataset_reader.h>
 
-EurocDatasetReader::EurocDatasetReader(const std::string &euroc_path,
+PhonesDatasetReader::PhonesDatasetReader(const std::string &euroc_path,
                                        void *yaml_config) {
 
     config = std::shared_ptr<xrslam::extra::YamlConfig>(
         reinterpret_cast<xrslam::extra::YamlConfig *>(yaml_config));
 
-    CameraCsv camera_csv;
-    ImuCsv imu_csv;
+    phone_CameraCsv camera_csv;
+    phone_ImuCsv imu_csv;
 
-    camera_csv.load(euroc_path + "/cam0/data.csv");
-    imu_csv.load(euroc_path + "/imu0/data.csv");
+    camera_csv.load(euroc_path + "/camera/data.csv");
+    imu_csv.load(euroc_path + "/imu/data.csv");
 
     for (auto &item : camera_csv.items) {
-        std::cout << euroc_path + "/cam0/data/" + item.filename << std::endl;
         image_data.emplace_back(item.t + config->camera_time_offset(),
-                                euroc_path + "/cam0/data/" + item.filename);
+                                euroc_path + "/camera/images/" + item.filename);
         all_data.emplace_back(item.t + config->camera_time_offset(),
                               NextDataType::CAMERA);
     }
@@ -39,7 +38,7 @@ EurocDatasetReader::EurocDatasetReader(const std::string &euroc_path,
                      [](auto &a, auto &b) { return a.first < b.first; });
 }
 
-DatasetReader::NextDataType EurocDatasetReader::next() {
+DatasetReader::NextDataType PhonesDatasetReader::next() {
     if (all_data.empty()) {
         return NextDataType::END;
     }
@@ -47,18 +46,18 @@ DatasetReader::NextDataType EurocDatasetReader::next() {
     return type;
 }
 
-void EurocDatasetReader::get_image_resolution(int &width, int &height) {
+void PhonesDatasetReader::get_image_resolution(int &width, int &height) {
     height = image_height;
     width = image_width;
 }
 
-std::pair<double, cv::Mat> EurocDatasetReader::read_image() {
+std::pair<double, cv::Mat> PhonesDatasetReader::read_image() {
     if (image_data.empty()) {
         return {};
     }
     auto [t, filename] = image_data.front();
     cv::Mat img_distorted = cv::imread(filename, cv::IMREAD_UNCHANGED);
-
+    cv::waitKey(1);
     cv::Mat img;
     if (config->camera_distortion_flag()) {
         xrslam::vector<4> D = config->camera_distortion();
@@ -83,7 +82,7 @@ std::pair<double, cv::Mat> EurocDatasetReader::read_image() {
     return std::make_pair(t, img);
 }
 
-std::pair<double, XRSLAMGyroscope> EurocDatasetReader::read_gyroscope() {
+std::pair<double, XRSLAMGyroscope> PhonesDatasetReader::read_gyroscope() {
     if (gyroscope_data.empty()) {
         return {};
     }
@@ -94,7 +93,7 @@ std::pair<double, XRSLAMGyroscope> EurocDatasetReader::read_gyroscope() {
     return item;
 }
 
-std::pair<double, XRSLAMAcceleration> EurocDatasetReader::read_accelerometer() {
+std::pair<double, XRSLAMAcceleration> PhonesDatasetReader::read_accelerometer() {
     if (accelerometer_data.empty()) {
         return {};
     }

@@ -18,7 +18,7 @@ Visualizer::Visualizer(bool play, const std::string &config_file)
     ba_y.resize(250, 0.5);
     ba_z.resize(250, 0.5);
 
-    read_device_params(config_file);
+    //read_device_params(config_file);
 }
 
 Visualizer::~Visualizer() {

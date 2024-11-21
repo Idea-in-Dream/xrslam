@@ -1,0 +1,41 @@
+%YAML:1.0
+imu:
+  # inertial sensor noise model parameters (static)
+  extrinsic:
+    q_bi: [ 0.0, 0.0, 0.0, 1.0 ] # x y z w
+    p_bi: [ 0.0, 0.0, 0.0 ] # x y z [m]
+  noise:
+    cov_g: [
+      0.05, 0.0, 0.0,
+      0.0, 0.05, 0.0,
+      0.0, 0.0, 0.05]
+    cov_a: [
+      0.2, 0.0, 0.0,
+      0.0, 0.2, 0.0,
+      0.0, 0.0, 0.2]
+  
+    cov_bg: [
+      4.0e-05, 0.0, 0.0,
+      0.0, 4.0e-05, 0.0,
+      0.0, 0.0, 4.0e-05]
+    cov_ba: [
+      0.02, 0.0, 0.0,
+      0.0, 0.02, 0.0,
+      0.0, 0.0,  0.02]
+
+cam0:
+  # camera0 wrt. body frame
+  resolution: [752, 480]        # resolution of camera
+  camera_model: pinhole         # camera model
+  distortion_model: radtan      # distortion model
+  intrinsics: [592.9800802803894, 592.5179298475871, 379.2391515458381, 235.44718988400342] # fu, fv, cu, cv
+  camera_distortion_flag: 0     # use distortion model or not
+  distortion: [0.18286512519218567, -0.38976274663137556, -0.0012785745645126157, -0.0003498835431035534] # k1, k2, p1, p2, xi
+  camera_readout_time: 0.0      # camera readout time
+  time_offset: 0.03            # camera time delay wrt. IMU
+  extrinsic:
+    q_bc: [ -0.70508216,  0.70911807,  0.00296207, 0.001391 ] # x y z w
+    p_bc: [ 0.00782773, 0.03952423, -0.00585949 ] # x y z [m]
+  noise: [
+    0.5, 0.0,
+    0.0, 0.5] # [pixel^2]

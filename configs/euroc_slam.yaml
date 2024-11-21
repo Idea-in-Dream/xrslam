@@ -28,8 +28,8 @@ initializer:
   refine_imu: true
 
 solver:
-  iteration_limit: 30
-  time_limit: 1.0e6 # [s]
+  iteration_limit: 8
+  time_limit: 0.04 # [s]
 
 rotation:
   misalignment_threshold: 0.02

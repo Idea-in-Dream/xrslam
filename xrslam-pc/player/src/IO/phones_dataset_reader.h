@@ -1,13 +1,13 @@
-#ifndef XRSLAM_PC_EUROC_DATASET_READER_H
-#define XRSLAM_PC_EUROC_DATASET_READER_H
+#ifndef XRSLAM_PC_PHONES_DATASET_READER_H
+#define XRSLAM_PC_PHONES_DATASET_READER_H
 
 #include <dataset_reader.h>
 #include <deque>
 #include <cstring>
 
-class EurocDatasetReader : public DatasetReader {
+class PhonesDatasetReader : public DatasetReader {
   public:
-    EurocDatasetReader(const std::string &filename, void *yaml_config);
+    PhonesDatasetReader(const std::string &filename, void *yaml_config);
     NextDataType next() override;
 
     void get_image_resolution(int &width, int &height) override;
@@ -25,7 +25,7 @@ class EurocDatasetReader : public DatasetReader {
     int image_height;
 };
 
-struct CameraCsv {
+struct phone_CameraCsv {
     struct CameraData {
         double t;
         std::string filename;
@@ -34,6 +34,8 @@ struct CameraCsv {
     std::vector<CameraData> items;
 
     void load(const std::string &filename) {
+
+
 
         items.clear(); // 清空之前的数据
         FILE *csv = fopen(filename.c_str(), "r");
@@ -47,11 +49,34 @@ struct CameraCsv {
             char filename_buffer[2048] = {0}; // 临时存储文件名
             if (sscanf(line, "%lf,%2047s", &item.t, filename_buffer) == 2) {
                 item.filename = filename_buffer;
-                item.t *= 1e-9;
                 items.emplace_back(std::move(item));
+                std::cout << "img item.t" << std::to_string(item.t) << std::endl;
+                std::cout << "img filename_buffer" << std::string(filename_buffer) << std::endl;
             }
         }
         fclose(csv); // 关闭文件
+
+
+
+        // items.clear();
+        // if (FILE *csv = fopen(filename.c_str(), "r")) {
+        //     char header_line[2048];
+        //     int ret = fscanf(csv, "%2047[^\r]\n", header_line);
+        //     std::cout << "header_line" << std::string(header_line) << std::endl;
+        //     char filename_buffer[2048];
+        //     CameraData item;
+        //     while (!feof(csv)) {
+        //         memset(filename_buffer, 0, 2048);
+        //         if (fscanf(csv, "%lf,%2047[^\r]\n", &item.t,
+        //                    filename_buffer) != 2) {
+        //             break;
+        //         }
+        //         std::cout << "img item.t" << std::to_string(item.t) << std::endl;
+        //         std::cout << "img filename_buffer" << std::string(filename_buffer) << std::endl;
+        //         item.filename = std::string(filename_buffer);
+                
+        //     }
+        //     fclose(csv);
         }
     }
 
@@ -67,7 +92,7 @@ struct CameraCsv {
     }
 };
 
-struct ImuCsv {
+struct phone_ImuCsv {
     struct ImuData {
         double t;
         struct {
@@ -85,43 +110,19 @@ struct ImuCsv {
     std::vector<ImuData> items;
 
     void load(const std::string &filename) {
-
-
-
-
-
-        items.clear(); // 清空之前的数据
-        FILE *csv = fopen(filename.c_str(), "r");
-    
-        if (csv) {
-            char line[2048];
+        items.clear();
+        if (FILE *csv = fopen(filename.c_str(), "r")) {
+            char header_line[2048];
+            int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
             ImuData item;
-        
-            while (fgets(line, sizeof(line), csv)) { // 逐行读取
-            // 解析每行的数据：逗号前的时间和逗号后的文件名
-            if (sscanf(line, "%lf,%lf,%lf,%lf,%lf,%lf,%lf",&item.t,
+            while (!feof(csv) &&
+                   fscanf(csv, "%lf,%lf,%lf,%lf,%lf,%lf,%lf\r\n", &item.t,
                           &item.w.x, &item.w.y, &item.w.z, &item.a.x, &item.a.y,
                           &item.a.z) == 7) {
-                item.t *= 1e-9;
                 items.emplace_back(std::move(item));
             }
+            fclose(csv);
         }
-        fclose(csv); // 关闭文件
-        }
-        // items.clear();
-        // if (FILE *csv = fopen(filename.c_str(), "r")) {
-        //     char header_line[2048];
-        //     int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
-        //     ImuData item;
-        //     while (!feof(csv) &&
-        //            fscanf(csv, "%lf,%lf,%lf,%lf,%lf,%lf,%lf\r\n", &item.t,
-        //                   &item.w.x, &item.w.y, &item.w.z, &item.a.x, &item.a.y,
-        //                   &item.a.z) == 7) {
-        //         item.t *= 1e-9;
-        //         items.emplace_back(std::move(item));
-        //     }
-        //     fclose(csv);
-        // }
     }
 
     void save(const std::string &filename) const {
