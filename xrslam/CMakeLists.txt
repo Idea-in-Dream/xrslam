@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 project(xrslam-library VERSION 0.5.0 LANGUAGES CXX)
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 configure_file(cmake/version.h.in include/xrslam/version.h)
 
-find_package(OpenCV REQUIRED)
-set(spdlog_DIR /home/cuimingdi/SLAM/xrslam/3rd/spdlog/build)
-find_package(spdlog REQUIRED)
+find_package(OpenCV 4.2 REQUIRED)
+# set(spdlog_DIR /home/cuimingdi/SLAM/xrslam/3rd/spdlog/build)
+# find_package(spdlog REQUIRED)
 find_package(Ceres REQUIRED)
 
 set(XRSLAM_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -129,7 +129,7 @@ target_include_directories(xrslam-core
     ${XRSLAM_BINARY_INCLUDE_DIR}
     ${XRSLAM_SOURCE_DIR}
     ${OpenCV_INCLUDE_DIRS}
-    ${SPDLOG_INCLUDE_DIR}
+    # ${SPDLOG_INCLUDE_DIR}
     ${CERES_INCLUDE_DIRS}
   PRIVATE
     ${XRSLAM_SOURCE_DIR}
@@ -137,11 +137,11 @@ target_include_directories(xrslam-core
 
 target_link_libraries(xrslam-core
 PUBLIC
-  options::modern-cpp
+  # options::modern-cpp
   # XRPrimer::xrprimer
   ${OpenCV_LIBS}
   ${CERES_LIBRARIES}
-  spdlog::spdlog
+  # spdlog::spdlog
 )
 
 set(XRSLAM_LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR} CACHE INTERNAL "")

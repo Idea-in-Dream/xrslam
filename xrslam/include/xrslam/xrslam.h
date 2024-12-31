@@ -10,20 +10,28 @@
 
 namespace xrslam {
 
+// 定义一个矩阵类型模板 `matrix`，可以灵活设置矩阵的行数、列数、存储布局和数据类型。
 template <int Rows = Eigen::Dynamic, int Cols = Rows, bool UseRowMajor = false,
           typename T = double>
+
 using matrix = typename std::conditional<
+    // 如果既不是单行也不是单列，返回带有自定义存储布局的矩阵类型
     Rows != 1 && Cols != 1,
+    // 矩阵类型：T 是数据类型，Rows 是行数，Cols 是列数，存储布局根据 UseRowMajor 决定
     Eigen::Matrix<T, Rows, Cols,
                   UseRowMajor ? Eigen::RowMajor : Eigen::ColMajor>,
+     // 否则返回默认列优先存储的矩阵类型              
     Eigen::Matrix<T, Rows, Cols>>::type;
 
+// 定义一个向量类型模板 `vector`，可以灵活设置维度、方向（行向量或列向量）和数据类型。
 template <int Dimension = Eigen::Dynamic, bool RowVector = false,
           typename T = double>
 using vector =
+    // 如果是行向量，则返回 1 行 Dimension 列的矩阵类型
     typename std::conditional<RowVector, matrix<1, Dimension, false, T>,
+                             // 否则返回 Dimension 行 1 列的矩阵类型
                               matrix<Dimension, 1, false, T>>::type;
-
+// 定义一个四元数类型，数据类型为 double。
 using quaternion = Eigen::Quaternion<double>;
 
 struct Pose {

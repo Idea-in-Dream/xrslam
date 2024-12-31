@@ -12,7 +12,7 @@ project(xrslam-superbuild)
 
 include(SuperBuildDepends)
 
-option(XRSLAM_DEBUG "..." ON)
+option(XRSLAM_DEBUG "..." OFF)
 option(XRSLAM_ENABLE_DEBUG_INSPECTION "..." ON)
 option(XRSLAM_ENABLE_THREADING "..." OFF)
 option(XRSLAM_PC_HEADLESS_ONLY "..." OFF)

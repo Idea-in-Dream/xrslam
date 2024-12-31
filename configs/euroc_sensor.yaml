@@ -1,10 +1,10 @@
 %YAML:1.0
 imu:
   # inertial sensor noise model parameters (static)
-  gyroscope_noise_density: 0.01       # [ rad / s / sqrt(Hz) ]
-  gyroscope_random_walk: 0.0001       # [ rad / s^2 / sqrt(Hz) ]
-  accelerometer_noise_density: 0.1    # [ m / s^2 / sqrt(Hz) ]
-  accelerometer_random_walk: 0.001    # [ m / s^3 / sqrt(Hz) ]
+  gyroscope_noise_density: 0.02       # [ rad / s / sqrt(Hz) ]
+  gyroscope_random_walk: 0.0002       # [ rad / s^2 / sqrt(Hz) ]
+  accelerometer_noise_density: 0.2    # [ m / s^2 / sqrt(Hz) ]
+  accelerometer_random_walk: 0.002    # [ m / s^3 / sqrt(Hz) ]
   accelerometer_bias: [0.0, 0.0, 0.0] # acc bias prior
   gyroscope_bias: [0.0, 0.0, 0.0]     # gyro bias prior
   extrinsic:
@@ -33,21 +33,22 @@ cam0:
   T_BS:
     cols: 4
     rows: 4
-    data: [0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
-           0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
-           -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
-           0.0, 0.0, 0.0, 1.0]
+    data: [-0.00571443, -0.99996476, -0.00614978, 0.03953153,
+         -0.99998124,  0.00570076,  0.00223937, 0.00761539,
+         -0.00220424,  0.00616246, -0.99997858, -0.00608567,
+          0.0,         0.0,         0.0,         1.0]
+           
   resolution: [752, 480]        # resolution of camera
   camera_model: pinhole         # camera model
   distortion_model: radtan      # distortion model
-  intrinsics: [458.654, 457.296, 367.215, 248.375] # fu, fv, cu, cv
-  camera_distortion_flag: 1     # use distortion model or not
-  distortion: [-0.28340811, 0.07395907, 0.00019359, 1.76187114e-05] # k1, k2, p1, p2, xi
+  intrinsics: [592.9800802803894, 592.5179298475871, 379.2391515458381, 235.44718988400342] # fx, fy, cx, cy
+  camera_distortion_flag: 1      # use distortion model or not
+  distortion: [0.18286512519218567, -0.38976274663137556, -0.0012785745645126157, -0.0003498835431035534] # k1, k2, p1, p2
   camera_readout_time: 0.0      # camera readout time
-  time_offset: 0.0              # camera time delay wrt. IMU
+  time_offset: -0.030              # camera time delay wrt. IMU
   extrinsic:
-    q_bc: [ -7.7071797555374275e-03, 1.0499323370587278e-02, 7.0175280029197162e-01, 7.1230146066895372e-01 ] # x y z w
-    p_bc: [ -0.0216401454975, -0.064676986768, 0.00981073058949 ] # x y z [m]
+    q_bc: [    -0.70508216,  0.70911807,  0.00296207, 0.001391] # x y z w
+    p_bc: [0.03953153,0.00761539, -0.00608567] # x y z [m]
   noise: [
     0.5, 0.0,
     0.0, 0.5] # [pixel^2]

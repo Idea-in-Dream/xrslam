@@ -44,59 +44,91 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
     // frames 解锁 (解锁后，其他线程可以继续向 frames 中添加帧)
     l.unlock();
 
+    // 预处理，包括直方图均衡化和建立金字塔
     frame->image->preprocess(config->feature_tracker_clahe_clip_limit(),
                              config->feature_tracker_clahe_width(),
                              config->feature_tracker_clahe_height());
-
+    // 获取最新的时间戳、最新的帧 ID、最新的位姿和最新的运动
     auto [latest_optimized_time, latest_optimized_frame_id,
           latest_optimized_pose, latest_optimized_motion] =
         detail->frontend->get_latest_state();
+    // 系统是否已经完成初始化   
+    // 如果 latest_optimized_frame_id 不等于 nil()，说明系统已经初始化完成。
     bool is_initialized = latest_optimized_frame_id != nil();
+    // 表示当前帧是否应该被滑动窗口跟踪算法标记。
+    // 如果系统尚未初始化，则直接标记当前帧。
+    // 如果系统已经初始化，检查当前帧的 ID 是否满足滑动窗口跟踪的频率条件。
     bool slidind_window_frame_tag =
         !is_initialized ||
         frame->id() % config->sliding_window_tracker_frequent() == 0;
+
+    // synchronized(map) 是一种 线程同步 机制，用于确保在多线程环境中对 map 对象的访问是 线程安全 的。
+    // 它的作用是使当前代码块成为 互斥区域，在同一时间内只能有一个线程进入和操作 map 对象，从而避免 竞态条件（Race Condition）和数据不一致的问题。
     synchronized(map) {
+        // 如果地图中已经存在当前帧，进行操作
         if (map->frame_num() > 0) {
+            // 系统是否已经初始化
             if (is_initialized) {
+                // 获取最新的优化帧的索引
                 size_t latest_optimized_frame_index =
                     map->frame_index_by_id(latest_optimized_frame_id);
+                // 如果最新的优化帧存在 
                 if (latest_optimized_frame_index != nil()) {
+                    // 如果找到，更新最新优化帧的 pose 和 motion 状态。
                     Frame *latest_optimized_frame =
                         map->get_frame(latest_optimized_frame_index);
+                    // 最新的优化帧的位姿
                     latest_optimized_frame->pose = latest_optimized_pose;
+                    // 最新优化帧的速度，陀螺仪偏置，加速度计偏置
                     latest_optimized_frame->motion = latest_optimized_motion;
+
+                    // 并对从该帧之后的所有帧，重新进行 IMU 预积分（integrate）和运动预测（predict）
                     for (size_t j = latest_optimized_frame_index + 1;
                          j < map->frame_num(); ++j) {
                         Frame *frame_i = map->get_frame(j - 1);
                         Frame *frame_j = map->get_frame(j);
+                        // 重新预积分
                         frame_j->preintegration.integrate(
                             frame_j->image->t, frame_i->motion.bg,
                             frame_i->motion.ba, false, false);
+                        // 预积分算速度，旋转，位置    
                         frame_j->preintegration.predict(frame_i, frame_j);
                     }
                 } else {
                     // TODO: unfortunately the frame has slided out, which means
                     // we are lost...
+                    // 如果未找到（帧已滑出窗口），记录警告日志，
+                    // 重置 latest_state，表明滑动窗口未能及时追踪最新优化结果。
                     log_warning("SWT cannot catch up.");
                     std::unique_lock lk(latest_pose_mutex);
+                    // 预积分状态重置
                     latest_state.reset();
                 }
             }
+            
+            // 调用 map->get_frame() 获取存储在地图对象中的最后一帧。
             Frame *last_frame = map->get_frame(map->frame_num() - 1);
+            // 如果上一帧的预积分数据中有 IMU 数据，则继续处理。
             if (!last_frame->preintegration.data.empty()) {
+                // 如果当前帧的预积分数据为空，或者 IMU 数据的时间戳与上一帧图像时间戳的差距过大，则需要补充数据。
                 if (frame->preintegration.data.empty() ||
                     (frame->preintegration.data.front().t -
                          last_frame->image->t >
                      1.0e-5)) {
+                    // 从上一帧的预积分数据中获取最新的 IMU 数据    
                     ImuData imu = last_frame->preintegration.data.back();
+                    // 将 IMU 数据的时间戳设置为上一帧图像的时间戳
                     imu.t = last_frame->image->t;
+                    // 插入到当前帧的预积分数据的开头
                     frame->preintegration.data.insert(
                         frame->preintegration.data.begin(), imu);
                 }
             }
+            // 调用 integrate 方法，使用上一帧的运动偏置值 bg（陀螺仪偏置）和 ba（加速度计偏置）对当前帧进行 IMU 预积分。
             frame->preintegration.integrate(
                 frame->image->t, last_frame->motion.bg, last_frame->motion.ba,
                 false, false);
+            // 使用上一帧作为参考帧，在当前帧上进行特征点跟踪
             last_frame->track_keypoints(frame.get(), config.get());
             if (is_initialized) {
                 frame->preintegration.predict(last_frame, frame.get());

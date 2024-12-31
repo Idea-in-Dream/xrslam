@@ -7,7 +7,7 @@ include(GNUInstallDirs)
 superbuild_depend(glfw)
 superbuild_depend(glbinding)
 superbuild_depend(nuklear)
-find_package(OpenCV REQUIRED)
+find_package(OpenCV 4.2 REQUIRED)
 
 add_library(lightvis
   ${CMAKE_CURRENT_SOURCE_DIR}/include/image.h

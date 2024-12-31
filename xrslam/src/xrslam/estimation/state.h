@@ -25,6 +25,7 @@ struct ExtrinsicParams {
 
 using PoseState = Pose;
 
+// 速度，陀螺仪偏置，加速度计偏置
 struct MotionState {
     MotionState() {
         v.setZero();

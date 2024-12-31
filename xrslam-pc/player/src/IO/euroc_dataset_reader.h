@@ -35,23 +35,46 @@ struct CameraCsv {
 
     void load(const std::string &filename) {
         items.clear();
-        if (FILE *csv = fopen(filename.c_str(), "r")) {
-            char header_line[2048];
-            int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
-            char filename_buffer[2048];
-            CameraData item;
-            while (!feof(csv)) {
-                memset(filename_buffer, 0, 2048);
-                if (fscanf(csv, "%lf,%2047[^\r]\r\n", &item.t,
-                           filename_buffer) != 2) {
-                    break;
-                }
-                item.t *= 1e-9;
-                item.filename = std::string(filename_buffer);
-                items.emplace_back(std::move(item));
-            }
-            fclose(csv);
+        std::ifstream file(filename);
+
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file: " << filename << std::endl;
         }
+
+        std::string line;
+        // 逐行读取文件内容
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
+            std::string column1, column2;
+            CameraData item;
+            if (std::getline(ss, column1, ',') && std::getline(ss, column2, ',')) {
+                item.t = std::stod(column1); // 转换为 long long
+                item.t *= 1e-9;
+                item.filename = column2;     // 保存文件名
+                items.push_back(item);       // 添加到 vector
+            }
+        }
+        file.close();
+        
+        
+
+        // if (FILE *csv = fopen(filename.c_str(), "r")) {
+        //     char header_line[2048];
+        //     int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
+        //     char filename_buffer[2048];
+        //     CameraData item;
+        //     while (!feof(csv)) {
+        //         memset(filename_buffer, 0, 2048);
+        //         if (fscanf(csv, "%lf,%2047[^\r]\r\n", &item.t,
+        //                    filename_buffer) != 2) {
+        //             break;
+        //         }
+        //         item.t *= 1e-9;
+        //         item.filename = std::string(filename_buffer);
+        //         items.emplace_back(std::move(item));
+        //     }
+        //     fclose(csv);
+        // }
     }
 
     void save(const std::string &filename) const {
@@ -84,20 +107,49 @@ struct ImuCsv {
     std::vector<ImuData> items;
 
     void load(const std::string &filename) {
+
         items.clear();
-        if (FILE *csv = fopen(filename.c_str(), "r")) {
-            char header_line[2048];
-            int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
-            ImuData item;
-            while (!feof(csv) &&
-                   fscanf(csv, "%lf,%lf,%lf,%lf,%lf,%lf,%lf\r\n", &item.t,
-                          &item.w.x, &item.w.y, &item.w.z, &item.a.x, &item.a.y,
-                          &item.a.z) == 7) {
-                item.t *= 1e-9;
-                items.emplace_back(std::move(item));
-            }
-            fclose(csv);
+        std::ifstream file(filename);
+
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file: " << filename << std::endl;
         }
+
+        std::string line;
+        // 逐行读取文件内容
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
+            std::string column_time, column1, column2, column3, column4, column5, column6;
+            ImuData item;
+            if (std::getline(ss, column_time, ',') && std::getline(ss, column1, ',') && std::getline(ss, column2, ',')&& std::getline(ss, column3, ',')&& std::getline(ss, column4, ',')&& std::getline(ss, column5, ',')&& std::getline(ss, column6, ',')) {
+                item.t = std::stod(column_time); // 转换为 long long
+                item.t *= 1e-9;
+                item.w.x = std::stod(column1); // 转换为 double
+                item.w.y = std::stod(column2); // 转换为 double
+                item.w.z = std::stod(column3); // 转换为 double
+                item.a.x = std::stod(column4); // 转换为 double
+                item.a.y = std::stod(column5); // 转换为 double
+                item.a.z = std::stod(column6); // 转换为 double
+                items.push_back(item);       // 添加到 vector
+            }
+        }
+        file.close();
+
+
+        // items.clear();
+        // if (FILE *csv = fopen(filename.c_str(), "r")) {
+        //     char header_line[2048];
+        //     int ret = fscanf(csv, "%2047[^\r]\r\n", header_line);
+        //     ImuData item;
+        //     while (!feof(csv) &&
+        //            fscanf(csv, "%lf,%lf,%lf,%lf,%lf,%lf,%lf\r\n", &item.t,
+        //                   &item.w.x, &item.w.y, &item.w.z, &item.a.x, &item.a.y,
+        //                   &item.a.z) == 7) {
+        //         item.t *= 1e-9;
+        //         items.emplace_back(std::move(item));
+        //     }
+        //     fclose(csv);
+        // }
     }
 
     void save(const std::string &filename) const {

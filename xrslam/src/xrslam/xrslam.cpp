@@ -76,7 +76,7 @@ static const unsigned char logo_ascii[] = {
     0xE2, 0x95, 0x90, 0xE2, 0x95, 0x9D};
 
 XRSLAM::XRSLAM(std::shared_ptr<Config> config) {
-    log_message(XRSLAM_LOG_INFO, (char *)logo_ascii, XRSLAM_VERSION_STRING);
+    // log_message(XRSLAM_LOG_INFO, (char *)logo_ascii, XRSLAM_VERSION_STRING);
     config->log_config();
     detail = std::make_unique<XRSLAM::Detail>(config);
 }

@@ -72,28 +72,37 @@ void Frame::detect_keypoints(Config *config) {
     }
 }
 
+// 实现视觉前端的特征点跟踪功能
 void Frame::track_keypoints(Frame *next_frame, Config *config) {
+    // 当前帧特征点初始化 bearings是当前帧地图点？
     std::vector<vector<2>> curr_keypoints(bearings.size());
     std::vector<vector<2>> next_keypoints;
-
+    // apply_k 使用相机内参矩阵 K 将特征点从归一化平面投影到像素平面
     for (size_t i = 0; i < bearings.size(); ++i) {
         curr_keypoints[i] = apply_k(bearings[i], K);
     }
-
+    // 如果配置文件中启用了特征点预测，则根据当前帧和下一帧的姿态变化预测下一帧的特征点位置
     if (config->feature_tracker_predict_keypoints()) {
+
+        // 使用 IMU 数据的旋转增量 delta.q 预测下一帧中特征点的方向
         quaternion delta_key_q =
             (camera.q_cs.conjugate() * imu.q_cs *
              next_frame->preintegration.delta.q *
              next_frame->imu.q_cs.conjugate() * next_frame->camera.q_cs)
                 .conjugate();
+        //  重置 next_keypoints       
         next_keypoints.resize(curr_keypoints.size());
+        // apply_k 使用相机内参矩阵 K 将特征点从归一化平面投影到像素平面
         for (size_t i = 0; i < bearings.size(); ++i) {
+            // 将特征点方向旋转到下一帧的方向
             next_keypoints[i] =
                 apply_k(delta_key_q * bearings[i], next_frame->K);
         }
     }
 
+    // 使用特征点跟踪器跟踪特征点，并返回跟踪状态和掩码
     std::vector<char> status, mask;
+    // 
     image->track_keypoints(next_frame->image.get(), curr_keypoints,
                            next_keypoints, status);
 

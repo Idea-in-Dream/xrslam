@@ -78,6 +78,7 @@ inline vector<4> triangulate_point(const matrix<3, 4> &P1,
     A.row(1) = point1(1) * P1.row(2) - point1(2) * P1.row(1);
     A.row(2) = point2(0) * P2.row(2) - point2(2) * P2.row(0);
     A.row(3) = point2(1) * P2.row(2) - point2(2) * P2.row(1);
+    std::cout << "triangulate_point A" << A << std::endl;
     return A.jacobiSvd(Eigen::ComputeFullV).matrixV().col(3);
 }
 

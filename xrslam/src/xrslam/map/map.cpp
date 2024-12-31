@@ -62,19 +62,28 @@ void Map::marginalize_frame(size_t index) {
     frames.erase(frames.begin() + index);
 }
 
+// 函数接受一个帧 ID (id) 作为参数，在 frames 容器中查找对应帧的索引，并返回该索引。
 size_t Map::frame_index_by_id(size_t id) const {
+    // 内部辅助类 FrameID 用于比较帧 ID
     struct FrameID {
+        // 提取帧指针中的 ID
         FrameID(const std::unique_ptr<Frame> &frame) : id(frame->id()) {}
+        // 直接用给定的 ID 初始化
         FrameID(size_t id) : id(id) {}
+        // 允许比较两个 FrameID 对象，实际上比较的是它们的 id
         bool operator<(const FrameID &fi) const { return id < fi.id; }
         size_t id;
     };
+    // 使用 std::lower_bound 在 frames 容器中查找第一个大于等于给定 ID 的帧
     auto it = std::lower_bound(frames.begin(), frames.end(), id,
                                std::less<FrameID>());
+    // 如果 it == frames.end()，表示未找到任何帧
     if (it == frames.end())
         return nil();
+    // 如果找到的帧的 id 大于 输入 id，也表示没有匹配帧
     if (id < (*it)->id())
         return nil();
+    // 如果找到帧，计算迭代器 it 到 frames.begin() 的距离，返回帧的索引。
     return std::distance(frames.begin(), it);
 }
 
