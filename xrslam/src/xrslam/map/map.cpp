@@ -18,11 +18,16 @@ void Map::clear() {
     tracks.clear();
 }
 
+// 用于将一个帧（Frame）对象添加到 Map 的帧列表（frames）中，可以在末尾追加，也可以插入到指定位置
 void Map::attach_frame(std::unique_ptr<Frame> frame, size_t position) {
+    // 将传入的帧对象的 map 指针设置为当前的 Map 对象。
     frame->map = this;
     if (position == nil()) {
+        // 将传入的 std::unique_ptr<Frame> 移动到 frames，避免复制。
+        // std::move(frame) 将传入的 std::unique_ptr<Frame> 移动到 frames，避免复制。
         frames.emplace_back(std::move(frame));
     } else {
+        // 将传入的 std::unique_ptr<Frame> 移动到 frames 的指定位置
         frames.emplace(frames.begin() + position, std::move(frame));
     }
 }

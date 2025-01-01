@@ -100,9 +100,12 @@ void PreIntegrator::compute_sqrt_inv_cov() {
 }
 
 void PreIntegrator::predict(const Frame *old_frame, Frame *new_frame) {
+    // 定义重力向量
     static const vector<3> gravity = {0, 0, -XRSLAM_GRAVITY_NOMINAL};
+    // 初始化新帧的偏置
     new_frame->motion.bg = old_frame->motion.bg;
     new_frame->motion.ba = old_frame->motion.ba;
+    // 根据积分器中的增量计算新帧的姿态和速度
     new_frame->motion.v =
         old_frame->motion.v + gravity * delta.t + old_frame->pose.q * delta.v;
     new_frame->pose.p = old_frame->pose.p + 0.5 * gravity * delta.t * delta.t +

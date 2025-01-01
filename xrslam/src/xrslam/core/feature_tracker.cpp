@@ -130,9 +130,14 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
                 false, false);
             // 使用上一帧作为参考帧，在当前帧上进行特征点跟踪
             last_frame->track_keypoints(frame.get(), config.get());
+            // 如果当前帧已经初始化，则进行 PnP 解算
             if (is_initialized) {
+                //  IMU 预积分过程中的状态预测
+                // 利用上一帧的状态（位置、速度、姿态）以及 IMU 的预积分量，预测新帧的状态
                 frame->preintegration.predict(last_frame, frame.get());
+// 如果是IOS系统
 #if defined(XRSLAM_IOS)
+                // 使用互斥锁保护关键帧地图的同步访问
                 synchronized(keymap) {
                     attach_latest_frame(frame.get());
                     solve_pnp();
@@ -301,21 +306,29 @@ void FeatureTracker::mirror_lastframe(Map *sliding_window_tracker_map) {
 }
 
 void FeatureTracker::attach_latest_frame(Frame *frame) {
-
+    // (上一帧) 从keymap取到最新的帧 
     Frame *new_last_frame_i = keymap->get_frame(keymap->frame_num() - 1);
+    // （上一帧）得到该帧在map中的索引
     size_t last_frame_index = map->frame_index_by_id(new_last_frame_i->id());
 
-    size_t frame_index_i = map->frame_index_by_id(
-        keymap->get_frame(keymap->frame_num() - 1)->id());
-    size_t frame_index_j = map->frame_num() - 1;
+    // size_t frame_index_i = map->frame_index_by_id(
+    //     keymap->get_frame(keymap->frame_num() - 1)->id());
+    // size_t frame_index_j = map->frame_num() - 1;
 
+    // 将新帧（frame 的克隆）添加到 keymap
     keymap->attach_frame(frame->clone());
+    // 更新 new_last_frame_j 为最新帧
     Frame *new_last_frame_j = keymap->get_frame(keymap->frame_num() - 1);
 
+    // 如果 last_frame_index 有效
     if (last_frame_index != nil()) {
+        // old_last_frame_i：map 中的上一帧
         Frame *old_last_frame_i = map->get_frame(last_frame_index);
+        // old_last_frame_j：map 中的当前帧
         Frame *old_last_frame_j = frame;
+        // 循环 上一帧 的所有关键点
         for (size_t ki = 0; ki < old_last_frame_i->keypoint_num(); ++ki) {
+            // 检查是否存在与 old_last_frame_j 相关的轨迹。
             if (Track *track = old_last_frame_i->get_track(ki)) {
                 if (size_t kj = track->get_keypoint_index(old_last_frame_j);
                     kj != nil()) {
