@@ -4,16 +4,16 @@
 #include <xrslam/common.h>
 
 namespace xrslam {
-
+// 将一个 3D 点 p 投影到图像平面，并返回对应的 2D 图像坐标
 inline vector<2> apply_k(const vector<3> &p, const matrix<3> &K) {
     return {p(0) / p(2) * K(0, 0) + K(0, 2), p(1) / p(2) * K(1, 1) + K(1, 2)};
 }
-
+// 将一个图像平面上的 2D 点 p 反投影到相机坐标系中，返回一个齐次坐标形式的 3D 点
 inline vector<3> remove_k(const vector<2> &p, const matrix<3> &K) {
     return vector<3>{(p(0) - K(0, 2)) / K(0, 0), (p(1) - K(1, 2)) / K(1, 1), 1}
         .normalized();
 }
-
+// 
 inline matrix<2, 3> dproj_dp(const vector<3> &p) {
     return (matrix<2, 3>() << 1.0 / p.z(), 0.0, -p.x() / (p.z() * p.z()), 0.0,
             1.0 / p.z(), -p.y() / (p.z() * p.z()))

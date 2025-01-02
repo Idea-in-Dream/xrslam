@@ -139,62 +139,93 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
 #if defined(XRSLAM_IOS)
                 // 使用互斥锁保护关键帧地图的同步访问
                 synchronized(keymap) {
+                    // 将当前帧附加到关键帧地图中
                     attach_latest_frame(frame.get());
+                    // 调用 solve_pnp() 函数进行 PnP 解算
                     solve_pnp();
+                    // 获取最新帧
                     Frame *latest_frame =
                         keymap->get_frame(keymap->frame_num() - 1);
+                    // 使用互斥锁保护最新状态的同步访问
                     std::unique_lock lk(latest_pose_mutex);
+                    // 更新最新状态
                     latest_state = {latest_frame->image->t, latest_frame->pose,
                                     latest_frame->motion};
                     lk.unlock();
+                    // 从关键帧地图中删除最新添加的关键帧
                     keymap->erase_frame(keymap->frame_num() - 1);
+                    // 如果配置启用了视觉定位 (visual_localization_enable) 并且全局定位状态有效 (global_localization_state)，
+                    
                     if (config->visual_localization_enable() &&
                         detail->frontend->global_localization_state()) {
+                        // 调用定位器 localizer 对最新关键帧执行定位查询
                         detail->frontend->localizer->query_localization(
                             latest_frame->image, latest_frame->pose);
                         // detail->frontend->localizer->send_pose_message(frame->image->t);
                     }
                 }
 #else
+                // 加锁 latest_pose_mutex，确保线程安全
                 std::unique_lock lk(latest_pose_mutex);
+                // 更新最新状态
                 latest_state = {frame->image->t, frame->pose, frame->motion};
+                // 如果配置启用了视觉定位 (visual_localization_enable) 并且全局定位状态有效 (global_localization_state)，
                 if (config->visual_localization_enable() &&
                     detail->frontend->global_localization_state()) {
+                    // 调用 query_localization 方法,查询全局定位信息，更新位姿或提供定位参考    
                     detail->frontend->localizer->query_localization(
                         frame->image, frame->pose);
                     // detail->frontend->localizer->send_pose_message(frame->image->t);
                 }
+                // 解锁 latest_pose_mutex
                 lk.unlock();
 #endif
             }
+            // 释放 OpenCvImage 对象中的所有图像数据和相关资源，从而节省内存
             last_frame->image->release_image_buffer();
         }
-
+        // 如果满足滑动窗口条件，则检测当前帧中的特征点，并将其附加到关键帧地图中
         if (slidind_window_frame_tag)
+            // 检测当前帧中的特征点
             frame->detect_keypoints(config.get());
+        // 调用 map 对象的 attach_frame 方法，将当前帧加入到 map（地图管理器）中    
         map->attach_frame(std::move(frame));
-
+        // 过 while 循环检查地图中的帧数量是否超过允许的最大帧数，并删除最旧的帧
+        // 1.帧数量检查
+        // 2.删除的帧必须是最旧的帧，其 ID 小于最新优化帧的 ID
         while (map->frame_num() >
                    (is_initialized
                         ? config->feature_tracker_max_frames()
                         : config->feature_tracker_max_init_frames()) &&
                map->get_frame(0)->id() < latest_optimized_frame_id) {
+            // 删除最旧的帧
             map->erase_frame(0);
         }
-
+        // 这段代码的功能是可视化关键点及其轨迹状态，用于调试或检查特征跟踪器的状态。
+        // feature_tracker_painter 表示调试绘制选项，如果存在，则绘制关键点及其轨迹状态。
         inspect_debug(feature_tracker_painter, p) {
+            // p.has_value() 检查 p 是否有有效的值
             if (p.has_value()) {
+                // InspectPainter 是一个绘制工具类，负责在图像上绘制关键点和轨迹信息
                 auto painter = std::any_cast<InspectPainter *>(p);
+                // 获取 map 中的最新帧（最后一帧）
                 auto frame = map->get_frame(map->frame_num() - 1);
+                // 设置图像
                 painter->set_image(frame->image.get());
+                // 遍历帧中所有关键点
                 for (size_t i = 0; i < frame->keypoint_num(); ++i) {
+                    // 如果关键点有对应的轨迹
                     if (Track *track = frame->get_track(i)) {
+                        // 使用绿色 {0, 255, 0} 绘制关键点
                         color3b c = {0, 255, 0};
+                        // 用相机内参矩阵 K 将关键点的归一化坐标转换为像素坐标
                         painter->point(apply_k(frame->get_keypoint(i), frame->K)
                                            .cast<int>(),
                                        c, 5);
                     } else {
+                        // 使用紫色 {255, 0, 255} 绘制关键点
                         color3b c = {255, 0, 255};
+                        // 用相机内参矩阵 K 将关键点的归一化坐标转换为像素坐标
                         painter->point(apply_k(frame->get_keypoint(i), frame->K)
                                            .cast<int>(),
                                        c, 5, 1);
@@ -203,7 +234,9 @@ void FeatureTracker::work(std::unique_lock<std::mutex> &l) {
             }
         }
     }
+    // 检查滑动窗口标志并触发帧处理
     if (slidind_window_frame_tag)
+        
         detail->frontend->issue_frame(map->get_frame(map->frame_num() - 1));
 }
 // 将一帧数据加入到特征跟踪器的工作队列
@@ -326,18 +359,25 @@ void FeatureTracker::attach_latest_frame(Frame *frame) {
         Frame *old_last_frame_i = map->get_frame(last_frame_index);
         // old_last_frame_j：map 中的当前帧
         Frame *old_last_frame_j = frame;
-        // 循环 上一帧 的所有关键点
+        // 处理了从旧帧（old_last_frame_i 和 old_last_frame_j）到新帧（new_last_frame_i 和 new_last_frame_j）的关键点轨迹关联，
+        // 核心功能是将旧帧中的轨迹映射到新帧中，并确保轨迹与关键点的正确关联。
+        // 遍历旧帧 old_last_frame_i 中的所有关键点索引 ki
         for (size_t ki = 0; ki < old_last_frame_i->keypoint_num(); ++ki) {
-            // 检查是否存在与 old_last_frame_j 相关的轨迹。
+
+            // 调用 get_track(ki) 检查关键点 ki 是否关联到某条轨迹（Track 对象）
             if (Track *track = old_last_frame_i->get_track(ki)) {
+                // 使用轨迹的 get_keypoint_index 方法查找关键点 ki 在旧帧 old_last_frame_j 中的对应关键点索引 kj
                 if (size_t kj = track->get_keypoint_index(old_last_frame_j);
                     kj != nil()) {
+                    // 在新帧 new_last_frame_i 中，获取与关键点 ki 关联的轨迹（或新建    
                     Track *track =
                         new_last_frame_i->get_track(ki, keymap.get());
+                    // 将新帧 new_last_frame_j 中的关键点 kj 添加到轨迹 track 中
                     track->add_keypoint(new_last_frame_j, kj);
                 }
             }
         }
+        // 将新添加帧的关键帧标志和固定位姿标志设为 false，表示当前帧不是关键帧，也不用于固定位姿的优化
         new_last_frame_j->tag(FT_KEYFRAME) = false;
         new_last_frame_j->tag(FT_FIX_POSE) = false;
     } else {
@@ -345,17 +385,22 @@ void FeatureTracker::attach_latest_frame(Frame *frame) {
     }
 }
 
+// 求解PnP问题，在已知的3D点和其在图像上的投影点之间，估计相机的姿态（位置和方向）
 void FeatureTracker::solve_pnp() {
-
+    
+    // 获取最新帧
     Frame *latest_frame = keymap->get_frame(keymap->frame_num() - 1);
-
+    // 创建求解器，实例化一个优化器对象 solver
     auto solver = Solver::create();
-
+    // 将最新帧添加到求解器中
     solver->add_frame_states(latest_frame);
-
+    // 遍历关键点
     for (size_t j = 0; j < latest_frame->keypoint_num(); ++j) {
+        // 如果关键点 j 有对应的轨迹
         if (Track *track = latest_frame->get_track(j)) {
+            // 该轨迹是否被标记为有效 (TT_VALID) 且已三角化 (TT_TRIANGULATED)
             if (track->all_tagged(TT_VALID, TT_TRIANGULATED)) {
+                // 为当前帧的关键点轨迹添加重投影先验因子
                 solver->put_factor(Solver::create_reprojection_prior_factor(
                     latest_frame, track));
             }

@@ -31,25 +31,35 @@ void Map::attach_frame(std::unique_ptr<Frame> frame, size_t position) {
         frames.emplace(frames.begin() + position, std::move(frame));
     }
 }
-
+// 从 Map 中分离指定索引的帧，但不清除帧的内容
 std::unique_ptr<Frame> Map::detach_frame(size_t index) {
+    // 获取 frames[index] 中的帧指针（不释放资源）
     std::unique_ptr<Frame> frame = std::move(frames[index]);
+    // 将索引 index 处的帧从 frames 中移出
     frames.erase(frames.begin() + index);
+    // 将移出的帧的 map 指针设置为 nullptr，表示该帧不再属于任何 Map
     frame->map = nullptr;
+    // 返回被移除的帧，供外部操作
     return frame;
 }
-
+// 取消指定帧中所有关键点与轨迹（Track）的关联
 void Map::untrack_frame(Frame *frame) {
+    // 遍历帧中的所有关键点
     for (size_t i = 0; i < frame->keypoint_num(); ++i) {
+        // 如果关键点有对应的轨迹
         if (Track *track = frame->get_track(i)) {
+            // 将该关键点从轨迹中移除
             track->remove_keypoint(frame);
         }
     }
 }
 
 void Map::erase_frame(size_t index) {
+    // 获取 frames[index] 中的帧指针（不释放资源）
     Frame *frame = frames[index].get();
+    // 取消该帧的所有关键点与轨迹的关联
     untrack_frame(frame);
+    // 将帧从 frames 中移除，同时将其 map 指针置为 nullptr
     detach_frame(index);
 }
 

@@ -87,8 +87,11 @@ void FrontendWorker::work(std::unique_lock<std::mutex> &l) {
 }
 
 void FrontendWorker::issue_frame(Frame *frame) {
+    // 调用 lock() 获取互斥锁 l，确保对共享资源的安全访问
     auto l = lock();
+    // 记录帧 ID到 pending_frame_ids 队列中
     pending_frame_ids.push_back(frame->id());
+    // 调用 resume() 函数，传入 l 作为参数
     resume(l);
 }
 

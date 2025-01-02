@@ -5,7 +5,7 @@ using namespace cv;
 
 namespace xrslam::extra {
 
-
+// 将vector<vector<2>>转换为vector<Point2f>
 static std::vector<Point2f> to_opencv(const std::vector<vector<2>> &v) {
     std::vector<Point2f> r(v.size());
     for (size_t i = 0; i < v.size(); ++i) {
@@ -17,48 +17,64 @@ static std::vector<Point2f> to_opencv(const std::vector<vector<2>> &v) {
 
 OpenCvImage::OpenCvImage() = default;
 
+// 单纯求插值
 double OpenCvImage::evaluate(const vector<2> &u, int level) const {
     double f;
+    // scale_levels[level] 给出了当前层级图像相对于原始图像的缩放比例 s
     const vector<2> &s = scale_levels[level];
+    // 通过 u.x() * s.x() 和 u.y() * s.y() 计算当前坐标在金字塔层级中的对应位置
     vector<2> su{u.x() * s.x(), u.y() * s.y()};
+    // 插值计算
     interpolator_levels[level].Evaluate(su.y(), su.x(), &f);
+    // 返回插值计算得到的像素值 f
     return f;
 }
-
+// 二次差值??? 还是梯度
 double OpenCvImage::evaluate(const vector<2> &u, vector<2> &ddu,
                              int level) const {
     double f;
+    // scale_levels[level] 给出了当前层级图像相对于原始图像的缩放比例 s
     const vector<2> &s = scale_levels[level];
+    // 通过 u.x() * s.x() 和 u.y() * s.y() 计算当前坐标在金字塔层级中的对应位置
     vector<2> su{u.x() * s.x(), u.y() * s.y()};
+    // 插值计算
     interpolator_levels[level].Evaluate(su.y(), su.x(), &f, &ddu.y(), &ddu.x());
+    // 由于金字塔层级坐标缩放，梯度值也需要根据缩放比例 s 进行调整
     ddu.x() *= s.x();
+
     ddu.y() *= s.y();
     return f;
 }
 
+// 检测关键点
 void OpenCvImage::detect_keypoints(std::vector<vector<2>> &keypoints,
                                    size_t max_points,
                                    double keypoint_distance) const {
 
+    // 存储检测到的关键点                                
     std::vector<KeyPoint> cvkeypoints;
 
+    // 使用opencv的GFTT算法检测关键点
     gftt(max_points)->detect(image, cvkeypoints);
-
+    // 对检测到的关键点进行排序，选择响应值最大的关键点
     if (cvkeypoints.size() > 0) {
         std::sort(cvkeypoints.begin(), cvkeypoints.end(),
                   [](const auto &a, const auto &b) {
                       return a.response > b.response;
                   });
+        // 提取关键点坐标
         std::vector<vector<2>> new_keypoints;
         for (size_t i = 0; i < cvkeypoints.size(); ++i) {
             new_keypoints.emplace_back(cvkeypoints[i].pt.x,
                                        cvkeypoints[i].pt.y);
         }
-
+        // 使用泊松滤波器对关键点进行滤波
         PoissonDiskFilter<2> filter(keypoint_distance);
+        // 设置已有的关键点，确保新插入的点不会破坏原有的分布
         filter.preset_points(keypoints);
+        // 插入新的关键点
         filter.insert_points(new_keypoints);
-
+        // 移除离图像边界小于 20 像素的点，防止边界点可能带来的不稳定性
         new_keypoints.erase(
             std::remove_if(new_keypoints.begin(), new_keypoints.end(),
                            [this](const auto &keypoint) {
@@ -67,7 +83,7 @@ void OpenCvImage::detect_keypoints(std::vector<vector<2>> &keypoints,
                                       keypoint.y() >= image.rows - 20;
                            }),
             new_keypoints.end());
-
+        //  将新检测并经过筛选的关键点 new_keypoints 追加到输入关键点列表 keypoints 中
         keypoints.insert(keypoints.end(), new_keypoints.begin(),
                          new_keypoints.end());
     }
@@ -223,12 +239,19 @@ ORB *OpenCvImage::orb() {
 }
 
 void OpenCvImage::release_image_buffer() {
+    // 释放当前图像 image 的内存
     image.release();
+    // 释放原始图像 raw 的内存
     raw.release();
+    // 清空图像金字塔
     image_pyramid.clear();
+    // 清空光流金字塔
     image_levels.clear();
+    // 清空插值器的层次数据
     interpolator_levels.clear();
+    // 清空与每层图像金字塔对应的网格数据
     grid_levels.clear();
+    // 清空缩放比例数据
     scale_levels.clear();
 }
 
