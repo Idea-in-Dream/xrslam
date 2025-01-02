@@ -16,7 +16,7 @@ option(XRSLAM_DEBUG "..." OFF)
 option(XRSLAM_ENABLE_DEBUG_INSPECTION "..." ON)
 option(XRSLAM_ENABLE_THREADING "..." OFF)
 option(XRSLAM_PC_HEADLESS_ONLY "..." OFF)
-option(XRSLAM_IOS "..." ON)
+option(XRSLAM_IOS "..." OFF)
 option(XRSLAM_TEST "..." OFF)
 
 

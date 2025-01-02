@@ -94,7 +94,7 @@ void SlidingWindowTracker::mirror_frame(Map *feature_tracking_map,
     new_frame_j->preintegration.predict(new_frame_i, new_frame_j);
 }
 
-// 滑动窗口跟踪核心函数
+// 滑动窗口跟踪核心函数 如状态更新、局部化新帧、关键帧管理、地标跟踪、窗口优化、以及调试信息输出等
 bool SlidingWindowTracker::track() {
     // 检查配置 config 中是否启用了 PARSAC 标志
     if (config->parsac_flag()) {
@@ -104,37 +104,49 @@ bool SlidingWindowTracker::track() {
             update_track_status();
         }
     }
-
+    // 此函数处理当前帧的局部化操作，将当前帧映射到已知的地图中
     localize_newframe();
-
+    // 检查是否需要管理关键帧,如果需要，则执行关键帧管理操作
     if (manage_keyframe()) {
+        // 在关键帧中跟踪地标
         track_landmark();
+        // 对滑动窗口中的帧进行优化
         refine_window();
+        // 执行窗口滑动操作，移除窗口中较旧的帧，保持窗口大小适当
         slide_window();
     } else {
+        // 对当前的子窗口进行优化操作
         refine_subwindow();
     }
-
+    // 输出调试信息
     inspect_debug(sliding_window_landmarks, landmarks) {
+        // 获取地图中的所有轨迹点，并存储在 landmarks 向量中
         std::vector<Landmark> points;
         points.reserve(map->track_num());
+        // 遍历地图中的所有点的轨迹
         for (size_t i = 0; i < map->track_num(); ++i) {
             if (Track *track = map->get_track(i)) {
+                // 检查轨迹点是否有效
                 if (track->tag(TT_VALID)) {
+                    // 将轨迹点添加到 points 向量中
                     Landmark point;
+                    // 获取轨迹点的三维位置
                     point.p = track->get_landmark_point();
+                    // 检查轨迹点是否已被三角化
                     point.triangulated = track->tag(TT_TRIANGULATED);
+                    // 检查轨迹点是否为静态点
                     points.push_back(point);
                 }
             }
         }
+        // 将 points 向量移动到 landmarks 变量中
         landmarks = std::move(points);
     }
-
+    // 陀螺因偏差（bg） 
     inspect_debug(sliding_window_current_bg, bg) {
         bg = std::get<2>(get_latest_state()).bg;
     }
-
+    // 加速度偏差（ba）
     inspect_debug(sliding_window_current_ba, ba) {
         ba = std::get<2>(get_latest_state()).ba;
     }
@@ -466,99 +478,150 @@ void SlidingWindowTracker::refine_window() {
 
 // 窗口滑动函数
 void SlidingWindowTracker::slide_window() {
+    // 检查帧数量是否超过最大窗口大小
     while (map->frame_num() > config->sliding_window_size()) {
+        // 获取窗口中的第一帧
         Frame *frame = map->get_frame(0);
+        // 遍历当前帧的所有子帧（subframes）
         for (size_t i = 0; i < frame->subframes.size(); ++i) {
+            // 将子帧从地图中移除
             map->untrack_frame(frame->subframes[i].get());
         }
+        // 边缘化当前帧
         map->marginalize_frame(0);
     }
 }
 
+// 主要用于对滑动窗口中的子帧进行优化调整
 void SlidingWindowTracker::refine_subwindow() {
+    // 获取当前地图中的最后一帧
     Frame *frame = map->get_frame(map->frame_num() - 1);
+    // 如果帧中不包含子帧，直接返回
     if (frame->subframes.empty())
         return;
+    //  如果当前帧的第一个子帧标记为 FT_NO_TRANSLATION，意味着该帧没有进行平移   
     if (frame->subframes[0]->tag(FT_NO_TRANSLATION)) {
+        // 当子帧的数量大于等于 9 时，进入合并 IMU 数据的步骤
         if (frame->subframes.size() >= 9) {
+            // 通过遍历子帧
             for (size_t i = frame->subframes.size() / 3; i > 0; --i) {
+                // 获取目标子帧 目标帧 (tgt_frame)：tgt_frame 是当前循环中需要合并 IMU 数据的目标子帧
                 Frame *tgt_frame = frame->subframes[i * 3 - 1].get();
+                // 用于存储将要合并的 IMU 数据
                 std::vector<ImuData> imu_data;
+                // 前 i 值对应的 3 个子帧（(i - 1) * 3 到 i * 3 - 1 之间的子帧）
                 for (size_t j = i * 3 - 1; j > (i - 1) * 3; --j) {
+                    // 每一个源子帧（src_frame）
                     Frame *src_frame = frame->subframes[j - 1].get();
+                    // 将其 preintegration.data（IMU数据）插入到 imu_data 的开头,插入到开头是为了保持数据的时间顺序。
                     imu_data.insert(imu_data.begin(),
                                     src_frame->preintegration.data.begin(),
                                     src_frame->preintegration.data.end());
+                    //  从地图中将该子帧移除               
                     map->untrack_frame(src_frame);
+                    // 从当前帧的子帧列表中移除该子帧
                     frame->subframes.erase(frame->subframes.begin() + (j - 1));
                 }
+                // 将 imu_data（已经合并的IMU数据）插入到目标子帧（tgt_frame）的 preintegration.data 的开头，
+                // 合并后的IMU数据将更新目标子帧的预积分数据
                 tgt_frame->preintegration.data.insert(
                     tgt_frame->preintegration.data.begin(), imu_data.begin(),
                     imu_data.end());
             }
         }
-
+        // 创建优化求解器并设置固定标签
         auto solver = Solver::create();
+        // 设置当前帧的标签，表示它的姿态和运动在优化过程中是固定的，不参与优化。
         frame->tag(FT_FIX_POSE) = true;
         frame->tag(FT_FIX_MOTION) = true;
-
+        // 将当前帧添加到优化求解器中
         solver->add_frame_states(frame);
+        // 遍历当前帧的所有子帧
         for (size_t i = 0; i < frame->subframes.size(); ++i) {
+            // 获取当前子帧
             Frame *subframe = frame->subframes[i].get();
+            // 将子帧添加到优化求解器中
             solver->add_frame_states(subframe);
+            // 获取前一个子帧
             Frame *prev_frame =
                 (i == 0 ? frame : frame->subframes[i - 1].get());
+            // 进行 IMU 数据的预积分    
             subframe->preintegration.integrate(
                 subframe->image->t, prev_frame->motion.bg,
                 prev_frame->motion.ba, true, true);
+            // 将子帧添加到求解器中，加入预积分误差因子    
             solver->put_factor(Solver::create_preintegration_error_factor(
                 prev_frame, subframe, subframe->preintegration));
         }
-
+        // 处理最后一个子帧的关键点约束
+        // 得到最后一个子帧
         Frame *last_subframe = frame->subframes.back().get();
+        // 遍历最后一个子帧中的所有关键点
         for (size_t k = 0; k < last_subframe->keypoint_num(); ++k) {
+            // 如果该关键点对应的轨迹存在，并且该轨迹被标记为有效
             if (Track *track = last_subframe->get_track(k)) {
+                // 该关键点对应的轨迹, 如果该轨迹被标记为三角化且静态
                 if (track->tag(TT_VALID)) {
                     if (track->tag(TT_TRIANGULATED)) {
                         if (track->tag(TT_STATIC))
+                            // 添加一个重投影先验因子
                             solver->put_factor(
                                 Solver::create_reprojection_prior_factor(
                                     last_subframe, track));
                     } else {
+                        // 添加一个旋转先验因子
                         solver->put_factor(Solver::create_rotation_prior_factor(
                             last_subframe, track));
                     }
                 }
             }
         }
-
+        // 进行优化求解
         solver->solve();
+        // 优化完成后，取消固定标签，允许这些帧在后续的优化过程中自由变化
         frame->tag(FT_FIX_POSE) = false;
         frame->tag(FT_FIX_MOTION) = false;
     } else {
+        // 如果该帧正在进行平移
+        // 1. 创建求解器
         auto solver = Solver::create();
+        // 2. 设置当前帧的 FT_FIX_POSE 和 FT_FIX_MOTION 标签为 true
         frame->tag(FT_FIX_POSE) = true;
         frame->tag(FT_FIX_MOTION) = true;
+        // 3. 将当前帧添加到求解器中
         solver->add_frame_states(frame);
+        // 4. 遍历当前帧的所有子帧
         for (size_t i = 0; i < frame->subframes.size(); ++i) {
+            // 获取当前帧的子帧
             Frame *subframe = frame->subframes[i].get();
+            // 将子帧添加到求解器中
             solver->add_frame_states(subframe);
+            // 对每个子帧，先确定前一个帧（prev_frame），如果是第一个子帧，则使用当前帧作为前一帧。
             Frame *prev_frame =
                 (i == 0 ? frame : frame->subframes[i - 1].get());
+            // 对 IMU 数据进行积分    
             subframe->preintegration.integrate(
                 subframe->image->t, prev_frame->motion.bg,
                 prev_frame->motion.ba, true, true);
+            // 将前一帧和当前子帧的预积分误差添加到求解器中，作为优化的约束条件
             solver->put_factor(Solver::create_preintegration_error_factor(
                 prev_frame, subframe, subframe->preintegration));
+            // 遍历当前子帧中的所有关键点
             for (size_t k = 0; k < subframe->keypoint_num(); ++k) {
+                // 该关键点对应的轨迹存在
                 if (Track *track = subframe->get_track(k)) {
+                    // 对于每个关键点，检查它是否有效且已三角化，并且是否为静态点（TT_VALID, TT_TRIANGULATED, TT_STATIC）
                     if (track->all_tagged(TT_VALID, TT_TRIANGULATED,
                                           TT_STATIC)) {
+                        // 如果关键点是来自一个关键帧（FT_KEYFRAME）                    
                         if (track->first_frame()->tag(FT_KEYFRAME)) {
+                            // 向求解器中添加重投影先验约束
                             solver->put_factor(
                                 Solver::create_reprojection_prior_factor(
                                     subframe, track));
+                        // 如果该关键点来自非关键帧，且该关键点的第一个帧 ID 大于当前帧的 ID            
                         } else if (track->first_frame()->id() > frame->id()) {
+                            // 将该关键点的重投影误差因素添加到求解器中（reprojection_error_factors）
                             solver->add_factor(
                                 frame->reprojection_error_factors[k].get());
                         }
@@ -566,7 +629,9 @@ void SlidingWindowTracker::refine_subwindow() {
                 }
             }
         }
+        // 求解优化问题
         solver->solve();
+        // 恢复当前帧的标签，表示当前帧的姿态和运动不再被固定
         frame->tag(FT_FIX_POSE) = false;
         frame->tag(FT_FIX_MOTION) = false;
     }

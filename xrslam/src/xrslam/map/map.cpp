@@ -63,17 +63,26 @@ void Map::erase_frame(size_t index) {
     detach_frame(index);
 }
 
+// 该函数的目的是对指定的帧（frame）进行边缘化（marginalization）
 void Map::marginalize_frame(size_t index) {
+    // 该实现仅允许边缘化索引为 0 的帧。也就是说，只能对第一个帧进行边缘化
     runtime_assert(index == 0, "currently only index == 0 is allowed");
+    // 如果 marginalization_factor（边缘化因子）没有初始化，程序会报错
     runtime_assert(marginalization_factor,
                    "marginalization_factor is not initialized yet");
+    //  执行边缘化             
     marginalization_factor->marginalize(index);
+    // 得到边缘化的帧
     Frame *frame = frames[index].get();
+    // 遍历帧中的所有关键点
     for (size_t i = 0; i < frame->keypoint_num(); ++i) {
+        // 对于每一个关键点，检查它是否关联到某个 Track 中
         if (Track *track = frame->get_track(i)) {
+            // 调用 remove_keypoint 方法移除这个关键点与帧的关联
             track->remove_keypoint(frame);
         }
     }
+    // 删除 frames 中的这帧数据。通过 erase 移除索引为 index 的帧
     frames.erase(frames.begin() + index);
 }
 
