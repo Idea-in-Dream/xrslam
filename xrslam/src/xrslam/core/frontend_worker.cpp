@@ -13,74 +13,111 @@
 
 namespace xrslam {
 
+// 构造函数：初始化 FrontendWorker
 FrontendWorker::FrontendWorker(XRSLAM::Detail *detail,
                                std::shared_ptr<Config> config)
     : detail(detail), config(config) {
+    // 创建一个 Initializer 对象，用于执行 SLAM 的初始化任务
     initializer = std::make_unique<Initializer>(config);
 
+    // 将 latest_state 设置为空初始值
     latest_state = {{}, nil(), {}, {}};
 }
 
+// 析构函数：销毁 FrontendWorker
 FrontendWorker::~FrontendWorker() = default;
 
+// 判断任务队列是否为空
 bool FrontendWorker::empty() const { return pending_frame_ids.empty(); }
 
+// 前端核心逻辑：处理任务队列中的帧
 void FrontendWorker::work(std::unique_lock<std::mutex> &l) {
+    // 如果 initializer 存在，说明当前处于初始化阶段
     if (initializer) {
+
+        // 提取挂起帧队列中的第一个帧 ID（pending_frame_id）
         size_t pending_frame_id = pending_frame_ids.front();
+        // 将第一个帧 ID 从挂起帧队列中移除
         pending_frame_ids.clear();
+        // 解锁互斥锁
         l.unlock();
+        // 将 feature_tracker->map 的关键帧同步到初始化器中，以便进行初始化
         synchronized(detail->feature_tracker->map) {
             initializer->mirror_keyframe_map(detail->feature_tracker->map.get(),
                                              pending_frame_id);
         }
+        // 调用 initializer->initialize() 执行初始化，并返回一个 sliding_window_tracker 对象
         if ((sliding_window_tracker = initializer->initialize())) {
 #if defined(XRSLAM_IOS)
+            // 将 feature_tracker 的关键帧地图与滑动窗口跟踪器的地图同步
             synchronized(detail->feature_tracker->keymap) {
                 detail->feature_tracker->synchronize_keymap(
                     sliding_window_tracker->map.get());
             }
 #endif
+            // 如果启用了视觉定位（visual_localization_enable）且全局定位状态有效
             if (config->visual_localization_enable() &&
                 global_localization_state()) {
+                // 创建一个 Localizer，并将其绑定到虚拟对象管理器    
                 localizer = std::make_unique<Localizer>(config);
                 sliding_window_tracker->map->create_virtual_object_manager(
                     localizer.get());
             } else {
+                // 否则，直接创建虚拟对象管理器
                 sliding_window_tracker->map->create_virtual_object_manager();
             }
+            // 将 feature_tracker 的地图同步到滑动窗口跟踪器中
             sliding_window_tracker->feature_tracking_map =
                 detail->feature_tracker->map;
+            // 锁    
             std::unique_lock lk(latest_state_mutex);
+            // 获取滑动窗口跟踪器的最新状态
             auto [t, pose, motion] = sliding_window_tracker->get_latest_state();
+            // 更新最新状态
             latest_state = {t, pending_frame_id, pose, motion};
+            // 解锁
             lk.unlock();
+            // 初始化完成后，释放 initializer，标志初始化阶段结束
             initializer.reset();
         }
-    } else if (sliding_window_tracker) {
+        }
+        // 如果滑动窗口跟踪器存在，说明当前处于跟踪阶段
+        else if (sliding_window_tracker) {
+        // 从 pending_frame_ids 队列中取出首个待处理的帧 ID
         size_t pending_frame_id = pending_frame_ids.front();
+        // 将其从队列中移除
         pending_frame_ids.pop_front();
+        // 解锁锁 l
         l.unlock();
+        // 确保在多线程环境中对地图的操作是安全的
         synchronized(detail->feature_tracker->map) {
+            // 将 feature_tracker 的地图镜像到滑动窗口跟踪器中
             sliding_window_tracker->mirror_frame(
                 detail->feature_tracker->map.get(), pending_frame_id);
         }
+        // 调用滑动窗口跟踪器的 track() 函数进行跟踪
         if (sliding_window_tracker->track()) {
 #if defined(XRSLAM_IOS)
+            // 将 feature_tracker 的关键帧地图与滑动窗口跟踪器的地图同步
             synchronized(detail->feature_tracker->keymap) {
                 detail->feature_tracker->synchronize_keymap(
                     sliding_window_tracker->map.get());
             }
-#endif
+#endif      
+            // 获取滑动窗口跟踪器的最新状态
             std::unique_lock lk(latest_state_mutex);
             auto [t, pose, motion] = sliding_window_tracker->get_latest_state();
+            // 更新最新状态
             latest_state = {t, pending_frame_id, pose, motion};
             lk.unlock();
         } else {
+            // 如果跟踪失败，则重新初始化
             std::unique_lock lk(latest_state_mutex);
             latest_state = {{}, nil(), {}, {}};
             lk.unlock();
+            // 重新创建初始化器
             initializer = std::make_unique<Initializer>(config);
+            // 放滑动窗口跟踪器：将 sliding_window_tracker 指针重置为空，释放内存
             sliding_window_tracker.reset();
         }
     }

@@ -19,136 +19,196 @@ Initializer::Initializer(std::shared_ptr<Config> config) : config(config) {}
 
 Initializer::~Initializer() = default;
 
+// 从 feature_tracking_map 中提取一定数量的关键帧，克隆到一个新的地图 map 中，
+// 并重新建立关键帧之间的轨迹和预积分数据。
 void Initializer::mirror_keyframe_map(Map *feature_tracking_map,
                                       size_t init_frame_id) {
+    // 根据 init_frame_id 获取其在 feature_tracking_map 中的索引位置
     size_t init_frame_index_last =
         feature_tracking_map->frame_index_by_id(init_frame_id);
+    // 关键帧之间的间隔，取值来自配置    
     size_t init_frame_index_gap = config->initializer_keyframe_gap();
+    // 所有初始化帧要求的总数量，取值来自配置
     size_t init_frame_index_distance =
         init_frame_index_gap * (config->initializer_keyframe_num() - 1);
-
+    // init_frame_id置为空，等待下一次函数调用赋值 
     init_frame_id = nil();
-
+    // 如果 feature_tracking_map 中的帧数量不足，无法满足初始化要求，则清空 map 并返回
     if (init_frame_index_last < init_frame_index_distance) {
         map.reset();
         return;
     }
-
+    // 计算第一个初始化帧的索引位置
     size_t init_frame_index_first =
         init_frame_index_last - init_frame_index_distance;
-
+    // 计算初始化关键帧的索引集合 (1,6,11,...)
     std::vector<size_t> init_keyframe_indices;
     for (size_t i = 0; i < config->initializer_keyframe_num(); ++i) {
         init_keyframe_indices.push_back(init_frame_index_first +
                                         i * init_frame_index_gap);
     }
-
+    // 创建一个新的地图 map
     map = std::make_unique<Map>();
+    // 从 feature_tracking_map 中克隆关键帧，并将其附加到 map 中
     for (size_t index : init_keyframe_indices) {
         map->attach_frame(feature_tracking_map->get_frame(index)->clone());
     }
 
+    //遍历 map 中的关键帧，从第 1 个关键帧开始，依次处理前后相邻的关键帧对
     for (size_t j = 1; j < map->frame_num(); ++j) {
+        // 原始地图中对应的关键帧
         Frame *old_frame_i =
             feature_tracking_map->get_frame(init_keyframe_indices[j - 1]);
         Frame *old_frame_j =
             feature_tracking_map->get_frame(init_keyframe_indices[j]);
+        // 新地图中克隆的对应关键帧
         Frame *new_frame_i = map->get_frame(j - 1);
         Frame *new_frame_j = map->get_frame(j);
+        
+        // 遍历 old_frame_i 中的所有关键点
         for (size_t ki = 0; ki < old_frame_i->keypoint_num(); ++ki) {
+            // 获取每个关键点对应的 Track 对象
             if (Track *track = old_frame_i->get_track(ki)) {
+                // 如果关键点 ki 在 old_frame_i 和 old_frame_j 之间有轨迹连接
+                // （get_keypoint_index 返回有效的 kj）
                 if (size_t kj = track->get_keypoint_index(old_frame_j);
                     kj != nil()) {
+                    // 在 new_frame_i 和 new_frame_j 中对应的关键点重新建立轨迹连接        
                     new_frame_i->get_track(ki, nullptr)
                         ->add_keypoint(new_frame_j, kj);
                 }
             }
         }
+        // 清除新帧的 IMU 数据：
         new_frame_j->preintegration.data.clear();
+        // 遍历 feature_tracking_map 中的帧，逐帧将 preintegration.data 中的 IMU 数据从 old_frame 复制到 new_frame_j 中
         for (size_t f = init_keyframe_indices[j - 1];
              f < init_keyframe_indices[j]; ++f) {
+            // 原始地图中对应的关键帧    
             Frame *old_frame = feature_tracking_map->get_frame(f + 1);
+            // 关键帧对应的IMU预积分
             std::vector<ImuData> &old_data = old_frame->preintegration.data;
+            // 将 old_data 中的 IMU 数据复制到 new_frame_j 中
             std::vector<ImuData> &new_data = new_frame_j->preintegration.data;
+            // 依次往后插入 old_data 中的元素到 new_data 中
             new_data.insert(new_data.end(), old_data.begin(), old_data.end());
         }
     }
 }
 
+// SLAM初始化器的核心部分，通过构建地图、初始化IMU和三角化特征点，完成对位姿和地图的优化，并返回一个用于后续跟踪的 SlidingWindowTracker 对象
 std::unique_ptr<SlidingWindowTracker> Initializer::initialize() {
+    // 检查地图是否为空：如果 map 为空，直接返回 nullptr
     if (!map)
         return nullptr;
+    // 是否完成sfm的初始化：如果 init_sfm() 返回 false，直接返回 nullptr
     if (!init_sfm())
         return nullptr;
+    // 是否完成IMU的初始化：如果 init_imu() 返回 false，直接返回 nullptr
     if (!init_imu())
         return nullptr;
 
+    // 固定第一个关键帧的位姿,作为初始化阶段的参考帧，避免全局漂移
     map->get_frame(0)->tag(FT_FIX_POSE) = true;
-
+    // 创建一个非线性优化求解器 solver
     auto solver = Solver::create();
+    // 将所有关键帧的位姿状态加入到求解器中，供后续优化使用
     for (size_t i = 0; i < map->frame_num(); ++i) {
         solver->add_frame_states(map->get_frame(i));
     }
+    // 被访问的轨迹状态
     std::unordered_set<Track *> visited_tracks;
+    // 遍历所有的关键帧
     for (size_t i = 0; i < map->frame_num(); ++i) {
+        // 获取关键帧
         Frame *frame = map->get_frame(i);
+        // 遍历关键帧中的所有关键点
         for (size_t j = 0; j < frame->keypoint_num(); ++j) {
+            // 获取关键点对应的轨迹
             Track *track = frame->get_track(j);
+            // 如果轨迹为空，跳过
             if (!track)
                 continue;
+            // 如果未标记为 TT_VALID），跳过    
             if (!track->tag(TT_VALID))
                 continue;
+            // 如果已经被访问添加过了    
             if (visited_tracks.count(track) > 0)
                 continue;
+            // 使用 visited_tracks 避免重复添加轨迹    
             visited_tracks.insert(track);
+            // 将轨迹状态（如 3D 点位置）加入到求解器
             solver->add_track_states(track);
         }
     }
+    // 遍历所有的关键帧
     for (size_t i = 0; i < map->frame_num(); ++i) {
         Frame *frame = map->get_frame(i);
+        // 遍历关键帧中的所有关键点
         for (size_t j = 0; j < frame->keypoint_num(); ++j) {
+            // 获取关键点对应的轨迹
             Track *track = frame->get_track(j);
+            // 如果轨迹为空，跳过
             if (!track)
                 continue;
+            // 如果如果未标记为 TT_VALID，或者 TT_TRIANGULATED    
             if (!track->all_tagged(TT_VALID, TT_TRIANGULATED))
                 continue;
+            // 如果是首帧    
             if (frame == track->first_frame())
                 continue;
+            // 添加重投影误差因子    
             solver->add_factor(frame->reprojection_error_factors[j].get());
         }
     }
+    // 遍历所有的相邻关键帧对
     for (size_t j = 1; j < map->frame_num(); ++j) {
         Frame *frame_i = map->get_frame(j - 1);
         Frame *frame_j = map->get_frame(j);
+        // 相邻关键帧进行预积分，预积分成功，则添加预积分误差因子
         if (frame_j->preintegration.integrate(frame_j->image->t,
                                               frame_i->motion.bg,
                                               frame_i->motion.ba, true, true)) {
+            //  创造预积分误差因子并添加                       
             solver->put_factor(Solver::create_preintegration_error_factor(
                 frame_i, frame_j, frame_j->preintegration));
         }
     }
+    // 执行优化，调整所有关键帧的位姿和地图点的位置
     solver->solve();
 
+    // 将所有帧标记为关键帧，用于后续的滑动窗口优化
     for (size_t i = 0; i < map->frame_num(); ++i) {
         map->get_frame(i)->tag(FT_KEYFRAME) = true;
     }
 
+    // 调试与可视化
     inspect_debug(sliding_window_landmarks, landmarks) {
+        // 地图点集合
         std::vector<Landmark> points;
         points.reserve(map->track_num());
+        // 遍历所有地图点轨迹
         for (size_t i = 0; i < map->track_num(); ++i) {
             if (Track *track = map->get_track(i)) {
+                // 如果轨迹被标记为 TT_VALID
                 if (track->tag(TT_VALID)) {
+                    // 创建地图点
                     Landmark point;
+                    // 得到地图点
                     point.p = track->get_landmark_point();
+                    // 标记为已三角化
                     point.triangulated = track->tag(TT_TRIANGULATED);
+                    // 添加到集合中
                     points.push_back(point);
                 }
             }
         }
+        // 将地图点集合赋值给 landmarks
         landmarks = std::move(points);
     }
 
+    // 创建并返回一个 SlidingWindowTracker 对象
+    // 将优化后的 map 传递给其进行后续跟踪
     std::unique_ptr<SlidingWindowTracker> tracker =
         std::make_unique<SlidingWindowTracker>(std::move(map), config);
     return tracker;
