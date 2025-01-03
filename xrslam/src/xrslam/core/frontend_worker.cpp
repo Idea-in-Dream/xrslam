@@ -132,14 +132,17 @@ void FrontendWorker::issue_frame(Frame *frame) {
     resume(l);
 }
 
+// 获取最新状态
 std::tuple<double, size_t, PoseState, MotionState>
 FrontendWorker::get_latest_state() const {
     std::unique_lock lk(latest_state_mutex);
     return latest_state;
 }
 
+// 创造虚拟对象
 size_t FrontendWorker::create_virtual_object() {
     auto l = lock();
+    // 如果滑动窗口跟踪器存在，则调用其 map 的 create_virtual_object() 函数创建虚拟对象
     if (sliding_window_tracker) {
         return sliding_window_tracker->map->create_virtual_object();
     } else {
@@ -148,34 +151,43 @@ size_t FrontendWorker::create_virtual_object() {
     l.unlock();
 }
 
+// 根据提供的 id 获取虚拟对象的姿态
 OutputObject FrontendWorker::get_virtual_object_pose_by_id(size_t id) {
     auto l = lock();
+    // 如果滑动窗口跟踪器存在，则调用其 map 的 get_virtual_object_pose_by_id() 函数获取虚拟对象的姿态
     if (sliding_window_tracker) {
         return sliding_window_tracker->map->get_virtual_object_pose_by_id(id);
     } else {
+        // 如果 sliding_window_tracker 无效，返回默认值，其中姿态为单位四元数，位置是非常大的值（如 {1000.0, 1000.0, 1000.0}）
         return {{0.0, 0.0, 0.0, 1.0}, {1000.0, 1000.0, 1000.0}, 1};
     }
     l.unlock();
 }
-
+// 返回当前系统状态
 SysState FrontendWorker::get_system_state() const {
+    // 如果初始化器存在，说明当前处于初始化阶段
     if (initializer) {
         return SysState::SYS_INITIALIZING;
+        // sliding_window_tracker 存在，则系统正在跟踪
     } else if (sliding_window_tracker) {
         return SysState::SYS_TRACKING;
     }
+    // 否则，系统处于未知状态
     return SysState::SYS_UNKNOWN;
 }
 
+// 调用 localizer 的 query_frame 方法。
 void FrontendWorker::query_frame() {
     if (localizer)
         localizer->query_frame();
 }
 
+// 获取当前是否处于全局定位状态
 bool FrontendWorker::global_localization_state() const {
     return global_localization_flag;
 }
 
+// 设置全局定位的状态标志。
 void FrontendWorker::set_global_localization_state(bool state) {
     global_localization_flag = state;
 }

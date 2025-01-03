@@ -15,9 +15,11 @@
 
 namespace xrslam {
 
+// 构造函数，初始化滑动窗口跟踪器
 SlidingWindowTracker::SlidingWindowTracker(std::unique_ptr<Map> keyframe_map,
                                            std::shared_ptr<Config> config)
     : map(std::move(keyframe_map)), config(config) {
+    // 对所有相邻帧进行 IMU 预积分
     for (size_t j = 1; j < map->frame_num(); ++j) {
         Frame *frame_i = map->get_frame(j - 1);
         Frame *frame_j = map->get_frame(j);
@@ -637,15 +639,18 @@ void SlidingWindowTracker::refine_subwindow() {
     }
 } // namespace xrslam
 
+// 滑动窗口获取最新状态
 std::tuple<double, PoseState, MotionState>
 SlidingWindowTracker::get_latest_state() const {
     const Frame *frame = map->get_frame(map->frame_num() - 1);
+    // 如果该帧有子帧，则使用最后一个子帧
     if (!frame->subframes.empty()) {
         frame = frame->subframes.back().get();
     }
     return {frame->image->t, frame->pose, frame->motion};
 }
 
+// 计算本质矩阵
 matrix<3> compute_essential_matrix(matrix<3> &R, vector<3> &t) {
     matrix<3> t_ = matrix<3>::Zero();
 
@@ -660,13 +665,23 @@ matrix<3> compute_essential_matrix(matrix<3> &R, vector<3> &t) {
     return E;
 }
 
+// 计算对极几何距离 
+// F：3x3 的基础矩阵 pt1, pt2：两帧图像中的 2D 点坐标
 double compute_epipolar_dist(matrix<3> F, vector<2> &pt1, vector<2> &pt2) {
+    // pt1.homogeneous() 将 2D 点 (x, y) 转成同余坐标 (x, y, 1)
+    // l = F * pt1.homogeneous() 计算 pt1 在另一帧图像中的极线 l
     vector<3> l = F * pt1.homogeneous();
+    // pt2.homogeneous().transpose() * l 计算点 pt2 到极线 l 的代数距离
+    // l.segment<2>(0).norm() 表示极线的 (a, b) 部分的范数，用于归一化距离
+    // dist 是点到极线的几何距离。若 dist 很小，说明点 pt2 符合由 pt1 确定的对极几何约束。
     double dist =
         std::abs(pt2.homogeneous().transpose() * l) / l.segment<2>(0).norm();
     return dist;
 }
 
+// 对于一个特征点 Track，在多关键帧下进行投影误差统计，如果深度或重投影残差不合理，则认为这个点无效
+// Track *track：包含一个特征点（Track）在若干帧中的对应关系
+// vector<3> &x：3D 空间中某点的位置估计（通常在当前参考坐标系下）
 bool SlidingWindowTracker::check_frames_rpe(Track *track, const vector<3> &x) {
     std::vector<matrix<3, 4>> Ps;
     std::vector<vector<3>> ps;
@@ -674,52 +689,68 @@ bool SlidingWindowTracker::check_frames_rpe(Track *track, const vector<3> &x) {
     bool is_valid = true;
     double rpe = 0.0;
     double rpe_count = 0.0;
+    // 遍历每个点跟踪中的每个关键帧和索引对
     for (const auto &[frame, keypoint_index] : track->keypoint_map()) {
+        // 如果该帧不是关键帧，则跳过
         if (!frame->tag(FT_KEYFRAME))
             continue;
+        // 从 frame 中获取相机姿态 pose    
         PoseState pose = frame->get_pose(frame->camera);
+        // 将 3D 点 x 转换到 frame 的坐标系下
         vector<3> y = pose.q.conjugate() * (x - pose.p);
+        // 如果 y 的 z 分量小于 1e-3 或大于 50，则认为该点无效
         if (y.z() <= 1.0e-3 || y.z() > 50) { // todo
             is_valid = false;
             break;
         }
+        // apply_k(y, frame->K) 将 3D 点 y 投影并转换到像素坐标
+        // 二者之差的范数表示重投影误差
         rpe += (apply_k(y, frame->K) -
                 apply_k(frame->get_keypoint(keypoint_index), frame->K))
                    .norm();
         rpe_count += 1.0;
     }
+    // 如果平均误差大于阈值（例如 3.0 像素），或者深度检查不通过，则 is_valid 设置为 false
     is_valid = is_valid && (rpe / std::max(rpe_count, 1.0) < 3.0);
 
     return is_valid;
 }
 
+// 两个帧 frame_i 和 frame_j 之间寻找足够多的 2D-2D 对应点（特征点匹配），
+// 并通过 parsac（类似于 RANSAC 的方法）估计本质矩阵 E，同时输出内外点掩码 mask
 bool SlidingWindowTracker::filter_parsac_2d2d(
     Frame *frame_i, Frame *frame_j, std::vector<char> &mask,
     std::vector<size_t> &pts_to_index) {
 
     std::vector<vector<2>> pts1, pts2;
-
+    // 遍历 frame_i 中的所有特征点
     for (size_t ki = 0; ki < frame_i->keypoint_num(); ++ki) {
+        // 如果该特征点有对应的 Track
         if (Track *track = frame_i->get_track(ki)) {
+            // 如果 Track 中有 frame_j 的对应点
             if (size_t kj = track->get_keypoint_index(frame_j)) {
                 if (kj != nil()) {
+                    // 将 frame_i 和 frame_j 中对应点的归一化坐标添加到 pts1 和 pts2
                     pts1.push_back(frame_i->get_keypoint(ki).hnormalized());
                     pts2.push_back(frame_j->get_keypoint(kj).hnormalized());
+                    // 将 kj 存入 pts_to_index
                     pts_to_index.push_back(kj);
                 }
             }
         }
     }
-
+    // 如果匹配点对数量小于 10，则无法计算本质矩阵，返回 false
     if (pts1.size() < 10)
         return false;
-
+    // 调用 find_essential_matrix_parsac 函数计算本质矩阵 E
     matrix<3> E =
         find_essential_matrix_parsac(pts1, pts2, mask, m_th / frame_i->K(0, 0));
 
     return true;
 }
 
+// 根据已有的世界坐标系下两帧（frame_i、frame_j）的位姿、相机外参、IMU 外参，
+// 推断这两帧在相机坐标系下的相对旋转 R 和平移 t
 void SlidingWindowTracker::predict_RT(Frame *frame_i, Frame *frame_j,
                                       matrix<3> &R, vector<3> &t) {
 
@@ -730,62 +761,80 @@ void SlidingWindowTracker::predict_RT(Frame *frame_i, Frame *frame_j,
     matrix<4> PwI = matrix<4>::Identity();
     matrix<4> Pwi = matrix<4>::Identity();
     matrix<4> Pwj = matrix<4>::Identity();
-
+    // Pwc 和 PwI 分别为相机坐标系和 IMU 坐标系在世界坐标系下的位姿
     Pwc.block<3, 3>(0, 0) = camera.q_cs.toRotationMatrix();
     Pwc.block<3, 1>(0, 3) = camera.p_cs;
     PwI.block<3, 3>(0, 0) = imu.q_cs.toRotationMatrix();
     PwI.block<3, 1>(0, 3) = imu.p_cs;
+    // Pwi 和 Pwj 分别为 frame_i 和 frame_j 在世界坐标系下的位姿
     Pwi.block<3, 3>(0, 0) = frame_i->pose.q.toRotationMatrix();
     Pwi.block<3, 1>(0, 3) = frame_i->pose.p;
     Pwj.block<3, 3>(0, 0) = frame_j->pose.q.toRotationMatrix();
     Pwj.block<3, 1>(0, 3) = frame_j->pose.p;
 
+    // 帧 j 到帧 i 的世界坐标系变换
+    // 计算两帧在 IMU+相机坐标系下的相对变换
     matrix<4> Pji = Pwj.inverse() * Pwi;
-
+    // 计算两帧在相机坐标系下的相对变换
     matrix<4> P = (Pwc.inverse() * PwI * Pji * PwI.inverse() * Pwc);
-
+    // 提取旋转和平移
     R = P.block<3, 3>(0, 0);
     t = P.block(0, 3, 3, 1);
 }
 
+// 对当前帧与关键帧之间的特征点进行筛选与评估
 bool SlidingWindowTracker::judge_track_status() {
 
+    // 获取当前帧和前一个关键帧
     Frame *curr_frame = map->get_frame(map->frame_num() - 1);
     Frame *keyframe = map->get_frame(map->frame_num() - 2);
+    // 将前一个关键帧的子帧（如果有）设为 last_frame
     Frame *last_frame = keyframe;
     if (!keyframe->subframes.empty()) {
         last_frame = keyframe->subframes.back().get();
     }
-
+    // 对当前帧 curr_frame 与关键帧 last_frame 之间的 IMU 数据做预积分
     curr_frame->preintegration.integrate(curr_frame->image->t,
                                          last_frame->motion.bg,
                                          last_frame->motion.ba, true, true);
+    // 根据上一帧的偏置（陀螺仪、加速度计）进行状态预测，赋给新帧                                    
     curr_frame->preintegration.predict(last_frame, curr_frame);
 
     m_P2D.clear();
     m_P3D.clear();
     m_lens.clear();
+    // 地图点索引表
     m_indices_map = std::vector<int>(curr_frame->keypoint_num(), -1);
-
+    // 遍历当前帧中的所有特征点
     for (size_t k = 0; k < curr_frame->keypoint_num(); ++k) {
+        // 如果该特征点有对应的 Track
         if (Track *track = curr_frame->get_track(k)) {
+            // 如果该特征点已被三角化（标签 TT_VALID 与 TT_TRIANGULATED）
             if (track->all_tagged(TT_VALID, TT_TRIANGULATED)) {
+                // 获取特征点的归一化坐标和地图点坐标
                 const vector<3> &bearing = curr_frame->get_keypoint(k);
                 const vector<3> &landmark = track->get_landmark_point();
+                // 将当前帧特征点的归一化坐标（bearing.hnormalized()）存入 m_P2D
                 m_P2D.push_back(bearing.hnormalized());
+                // 将对应的 3D Landmark（世界坐标）存入 m_P3D
                 m_P3D.push_back(landmark);
+                // 将地图点的生命周期存入 m_lens
                 m_lens.push_back(std::max(track->m_life, size_t(0)));
+                // 记录特征点 k 对应的 m_P3D 索引
                 m_indices_map[k] = m_P3D.size() - 1;
             }
         }
     }
-
+    // 如果收集到的特征点少于 20，则直接返回 false，表示无法进行可靠计算
     if (m_P2D.size() < 20)
         return false;
-
+    // 获取当前帧的位姿
     const PoseState &pose = curr_frame->get_pose(curr_frame->camera);
 
+    // mask：和常见 RANSAC 一样，输出用于区分内点/外点的布尔向量
     std::vector<char> mask;
+    // 调用自定义的 find_pnp_matrix_parsac_imu()，基于 Parsac
+    // 进行 2D-3D PnP 计算，得到一个相机 pose 矩阵 T_IMU
     matrix<3> Rcw = pose.q.inverse().toRotationMatrix();
     vector<3> tcw = pose.q.inverse() * pose.p * (-1.0);
     matrix<4> T_IMU =
@@ -794,13 +843,15 @@ bool SlidingWindowTracker::judge_track_status() {
 
     matrix<3> R;
     vector<3> t;
+    // 调用 predict_RT 函数，根据关键帧和当前帧已有的姿态信息，预测二者的相对旋转 R 与平移 t。
     predict_RT(keyframe, curr_frame, R, t);
 
-    // check rpe
+    // check rpe 
     {
+        // 内外点分离
         std::vector<vector<2>> P2D_inliers, P2D_outliers;
         std::vector<vector<3>> P3D_inliers, P3D_outliers;
-
+        // 使用mask 用来分离内点与外点
         for (int i = 0; i < m_P2D.size(); ++i) {
             if (mask[i]) {
                 P2D_inliers.push_back(m_P2D[i]);
@@ -810,9 +861,10 @@ bool SlidingWindowTracker::judge_track_status() {
                 P3D_outliers.push_back(m_P3D[i]);
             }
         }
-
+        // 计算内点与外点的投影误差
         std::vector<double> inlier_errs, outlier_errs;
         double inlier_errs_sum = 0, outlier_errs_sum = 0;
+        // 计算内点误差
         for (int i = 0; i < P2D_inliers.size(); i++) {
             vector<3> p = pose.q.conjugate() * (P3D_inliers[i] - pose.p);
             double proj_err =
@@ -822,7 +874,7 @@ bool SlidingWindowTracker::judge_track_status() {
             inlier_errs.push_back(proj_err);
             inlier_errs_sum += proj_err;
         }
-
+        // 计算外点误差
         for (int i = 0; i < P2D_outliers.size(); i++) {
             vector<3> p = pose.q.conjugate() * (P3D_outliers[i] - pose.p);
             double proj_err =
@@ -833,24 +885,31 @@ bool SlidingWindowTracker::judge_track_status() {
             outlier_errs_sum += proj_err;
         }
     }
-
+    // 由预测相对位姿 R, t 生成本质矩阵 E = [t]x R
     matrix<3> E = compute_essential_matrix(R, t);
+    // 计算基础矩阵 F = K^(-1).E.K^(-1)
     matrix<3> F =
         keyframe->K.transpose().inverse() * E * curr_frame->K.inverse();
-
+    // 构建 inlier 和 outlier 集合
     std::vector<vector<2>> inlier_set1, inlier_set2;
     std::vector<vector<2>> outlier_set1, outlier_set2;
+    // 遍历当前帧的所有特征点
     for (size_t i = 0; i < curr_frame->keypoint_num(); ++i) {
+        // 这个特征点已关联到某个3D点
         if (m_indices_map[i] != -1) {
+            // 说明在关键帧中也能找到该特征点 (帧 j 的索引)
             if (size_t j =
                     curr_frame->get_track(i)->get_keypoint_index(keyframe);
                 j != nil()) {
+                // // 如果 mask[m_indices_map[i]] == true，表示内点
                 if (mask[m_indices_map[i]]) {
+                    // 将内点添加到 inlier 集合中
                     inlier_set1.push_back(
                         apply_k(keyframe->get_keypoint(j), keyframe->K));
                     inlier_set2.push_back(
                         apply_k(curr_frame->get_keypoint(i), curr_frame->K));
                 } else {
+                    // 否则将外点添加到 outlier 集合中
                     outlier_set1.push_back(
                         apply_k(keyframe->get_keypoint(j), keyframe->K));
                     outlier_set2.push_back(
@@ -859,48 +918,68 @@ bool SlidingWindowTracker::judge_track_status() {
             }
         }
     }
-
+    // 计算对极几何距离
     std::vector<double> inliers_dist, outliers_dist;
 
+    // 计算内点对极几何距离
     for (int i = 0; i < inlier_set1.size(); i++) {
         vector<2> &p1 = inlier_set1[i];
         vector<2> &p2 = inlier_set2[i];
+        // compute_epipolar_dist(F, p1, p2) 点 p1 相对于 p2 的对极几何距离计算
+        // compute_epipolar_dist(F.transpose(), p2, p1) 点 p2 相对于 p1 的对极几何距离计算
         double err = compute_epipolar_dist(F, p1, p2) +
                      compute_epipolar_dist(F.transpose(), p2, p1);
+        // 将内点的距离存于 inliers_dist
         inliers_dist.push_back(err);
     }
-
+    // 计算外点对极几何距离
     for (int i = 0; i < outlier_set1.size(); i++) {
         vector<2> &p1 = outlier_set1[i];
         vector<2> &p2 = outlier_set2[i];
         double err = compute_epipolar_dist(F, p1, p2) +
                      compute_epipolar_dist(F.transpose(), p2, p1);
+        // 外点的距离存于 outliers_dist             
         outliers_dist.push_back(err);
     }
 
+    // 如果内点或外点数量小于 20，则无法计算阈值
     size_t min_num = 20;
     if (inliers_dist.size() < min_num || outliers_dist.size() < min_num)
         return false;
 
+    // 对内点和外点的距离进行排序
     std::sort(inliers_dist.begin(), inliers_dist.end());
     std::sort(outliers_dist.begin(), outliers_dist.end());
 
+    // 计算内外点误差的中位数
     double th1 = inliers_dist[size_t(inliers_dist.size() * 0.5)];
     double th2 = outliers_dist[size_t(outliers_dist.size() * 0.5)];
 
+    // 判断是否存在歧义
+    // 如果外点距离的中位数 th2 并没有显著大于内点距离的中位数 th1，
+    // 例如 th2 < th1 * 2，说明内外点的几何距离分布过于接近（即歧义较大）。
     if (th2 < th1 * 2) // mean there is ambiguity
         return false;
 
+    // 动态设置阈值
+    // 内外点的中位距离 th1 和 th2 进行平均，得到一个新的阈值 m_th
     m_th = (th1 + th2) / 2;
 
+    // 更新当前帧中每个特征点的状态
+    // 遍历当前帧的所有特征点
     for (size_t k = 0; k < curr_frame->keypoint_num(); ++k) {
+        // 特征点已被跟踪到
         if (Track *track = curr_frame->get_track(k)) {
             // track->tag(TT_STATIC) = true;
+            // 这个特征点已关联到某个3D点
             if (m_indices_map[k] != -1) {
+                // 如果是内点
                 if (mask[m_indices_map[k]]) {
                     curr_frame->get_track(k)->tag(TT_OUTLIER) = false;
+                    // TT_STATIC：表示该特征被认为是静态、可信赖的点
                     curr_frame->get_track(k)->tag(TT_STATIC) = true;
                 } else {
+                    // TT_OUTLIER：表示该特征在本次几何估计中被认为是外点
                     curr_frame->get_track(k)->tag(TT_OUTLIER) = true;
                     curr_frame->get_track(k)->tag(TT_STATIC) = false;
                 }
@@ -911,27 +990,37 @@ bool SlidingWindowTracker::judge_track_status() {
     return true;
 }
 
+// 更新当前帧中每个特征点的状态
 void SlidingWindowTracker::update_track_status() {
-
+    // 获取当前帧
     Frame *curr_frame = map->get_frame(map->frame_num() - 1);
+    // 获取当前帧在特征跟踪地图中的索引
     size_t frame_id = feature_tracking_map->frame_index_by_id(curr_frame->id());
-
+    // 如果当前帧在特征跟踪地图中不存在，则返回
     if (frame_id == nil())
         return;
 
+    // 在 feature_tracking_map 中找到与 curr_frame 相同 ID 的 “旧帧”
     Frame *old_frame = feature_tracking_map->get_frame(frame_id);
 
+    // outlier_cnts[i]：记录第 i 个特征点被判定为“外点”的次数
     std::vector<size_t> outlier_cnts(curr_frame->keypoint_num(), 0);
+    // matches_cnts[i]：记录第 i 个特征点被匹配到的次数
     std::vector<size_t> matches_cnts(curr_frame->keypoint_num(), 0);
+
+    // 需要要检查的帧的id
     size_t start_idx = std::min(
         map->frame_num() - 1,
         std::max(map->frame_num() - 1 - config->parsac_keyframe_check_size(),
                  size_t(0)));
+    // 遍历要坚持的帧id             
     for (size_t i = start_idx; i < map->frame_num() - 1; i++) {
         std::vector<char> mask;
         std::vector<size_t> pts_to_index;
+        // 进行2D-2D特征匹配，返回 mask（内点 / 外点）和 pts_to_index（指示当前帧特征点索引）
         if (filter_parsac_2d2d(map->get_frame(i), curr_frame, mask,
                                pts_to_index)) {
+            // 遍历 mask，统计外点和匹配次数
             for (size_t j = 0; j < mask.size(); j++) {
                 if (!mask[j]) {
                     outlier_cnts[pts_to_index[j]] += 1;
@@ -940,17 +1029,25 @@ void SlidingWindowTracker::update_track_status() {
             }
         }
     }
-
+    // 遍历当前帧的所有特征点
     for (size_t i = 0; i < curr_frame->keypoint_num(); i++) {
+        // 如果当前帧的特征点被跟踪到
         if (Track *curr_track = curr_frame->get_track(i)) {
+            // 如果当前帧的特征点在特征跟踪帧中也被跟踪到
             if (size_t j = curr_track->get_keypoint_index(old_frame)) {
                 if (j != nil()) {
+                    // 获取 old_frame 中的对应 Track（即特征点 j）
                     Track *old_track = old_frame->get_track(j);
+                    // 定义一个外点阈值 outlier_th，用总帧数 / 2 来衡量
                     size_t outlier_th = map->frame_num() / 2;
+                    
+                    // 如果当前特征点在统计中，外点出现次数大于 outlier_th / 2
+                    // 且外点出现次数大于匹配次数的 80%，则标记为非静态
                     if (outlier_cnts[i] > outlier_th / 2 &&
                         outlier_cnts[i] > 0.8 * matches_cnts[i]) {
                         curr_track->tag(TT_STATIC) = false;
                     }
+                    //  // 如果 old_track 或 current track 任意一方不再是静态，那么都标记为非静态
                     if (!old_track->tag(TT_STATIC) ||
                         !curr_track->tag(TT_STATIC)) {
                         curr_track->tag(TT_STATIC) = false;
