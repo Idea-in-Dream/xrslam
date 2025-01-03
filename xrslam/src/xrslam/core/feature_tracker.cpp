@@ -249,6 +249,7 @@ void FeatureTracker::track_frame(std::unique_ptr<Frame> frame) {
     resume(l);
 }
 
+// 线程安全，获得最新的位姿状态
 std::optional<std::tuple<double, PoseState, MotionState>>
 FeatureTracker::get_latest_state() const {
     std::unique_lock lk(latest_pose_mutex);
@@ -270,25 +271,39 @@ void FeatureTracker::synchronize_keymap(Map *sliding_window_tracker_map) {
     mirror_lastframe(sliding_window_tracker_map);
 }
 
+// 滑动窗口跟踪器的地图 (sliding_window_tracker_map) 复制到特征跟踪器的关键帧地图 (keymap)
 void FeatureTracker::mirror_map(Map *sliding_window_tracker_map) {
 
+    // 遍历 sliding_window_tracker_map 中的所有帧，将它们克隆并添加到 keymap 中
     for (size_t index = 0; index < sliding_window_tracker_map->frame_num();
          ++index) {
         keymap->attach_frame(
             sliding_window_tracker_map->get_frame(index)->clone());
     }
-
+    // 
     for (size_t j = 1; j < keymap->frame_num(); ++j) {
+
+        // 滑动窗口相邻两帧
         Frame *old_frame_i = sliding_window_tracker_map->get_frame(j - 1);
         Frame *old_frame_j = sliding_window_tracker_map->get_frame(j);
+        
+        // keymap中相邻的两帧
         Frame *new_frame_i = keymap->get_frame(j - 1);
         Frame *new_frame_j = keymap->get_frame(j);
+
+        // 遍历 old_frame_i 中的所有特征点
         for (size_t ki = 0; ki < old_frame_i->keypoint_num(); ++ki) {
+            // 如果特征点可以被跟踪
             if (Track *track = old_frame_i->get_track(ki)) {
+                // 如果 特征点可以在 old_frame_j 被索引到
                 if (size_t kj = track->get_keypoint_index(old_frame_j);
                     kj != nil()) {
+                    
+                    // keymap中新建特征点跟踪轨迹
                     Track *new_track = new_frame_i->get_track(ki, keymap.get());
+                    // 点跟踪和相邻帧中的特征点关联
                     new_track->add_keypoint(new_frame_j, kj);
+                    // 复制轨迹点的三维位置 (landmark) 和状态标志（例如 TT_VALID, TT_TRIANGULATED, TT_FIX_INVD）
                     new_track->landmark = track->landmark;
                     new_track->tag(TT_VALID) = track->tag(TT_VALID);
                     new_track->tag(TT_TRIANGULATED) =
@@ -299,6 +314,7 @@ void FeatureTracker::mirror_map(Map *sliding_window_tracker_map) {
         }
     }
 
+    // 标记 keymap 中的所有关键帧和固定姿态
     for (size_t index = 0; index < keymap->frame_num(); ++index) {
         Frame *keyframe = keymap->get_frame(index);
         keyframe->tag(FT_KEYFRAME) = true;
@@ -307,32 +323,40 @@ void FeatureTracker::mirror_map(Map *sliding_window_tracker_map) {
     }
 }
 
+// 将滑动窗口跟踪器中最新帧的最后一个子帧同步到特征跟踪器的关键帧地图中
 void FeatureTracker::mirror_lastframe(Map *sliding_window_tracker_map) {
 
+    // keymap 最后一个子帧
     Frame *last_keyframe_i = keymap->get_frame(keymap->frame_num() - 1);
+    // 滑动窗口跟踪器最后一个子帧
     Frame *last_keyframe_j = sliding_window_tracker_map->get_frame(
         sliding_window_tracker_map->frame_num() - 1);
-
+    
+    // 如果滑动窗口跟踪器最后一个子帧没有子帧，说明这个子帧就是关键帧
     if (last_keyframe_j->subframes.empty()) // no subframes means this keyframe
                                             // has been existed in FT map
         return;
-
+    // 得到滑动窗口跟踪器最后一帧的最后一个子帧
     Frame *last_subframe = last_keyframe_j->subframes.back().get();
-
+    // 将滑动窗口跟踪器最后一帧的最后一个子帧添加到关键帧地图中
     keymap->attach_frame(last_subframe->clone());
-
+    // 得到keymap中的最后一帧
     Frame *new_keyframe = keymap->get_frame(keymap->frame_num() - 1);
 
+    // 遍历滑动窗口跟踪器最后一帧的所有特征点
     for (size_t ki = 0; ki < last_keyframe_j->keypoint_num(); ++ki) {
+        // 如果特征点可以被跟踪
         if (Track *track = last_keyframe_j->get_track(ki)) {
+            // 如果特征点在滑动窗口跟踪器最后一帧的最后一个子帧中可以被索引到
             if (size_t kj = track->get_keypoint_index(last_subframe);
                 kj != nil()) {
+                // 在 点跟踪中增加该点
                 last_keyframe_i->get_track(ki, keymap.get())
                     ->add_keypoint(new_keyframe, kj);
             }
         }
     }
-
+    // 标记关键帧和固定姿态 
     new_keyframe->tag(FT_KEYFRAME) = false;
     new_keyframe->tag(FT_FIX_POSE) = false;
     new_keyframe->tag(FT_FIX_MOTION) = false;
